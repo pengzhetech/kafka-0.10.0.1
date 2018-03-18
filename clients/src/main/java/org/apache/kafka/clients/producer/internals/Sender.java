@@ -3,9 +3,9 @@
  * file distributed with this work for additional information regarding copyright ownership. The ASF licenses this file
  * to You under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
  * License. You may obtain a copy of the License at
- * 
+ * <p>
  * http://www.apache.org/licenses/LICENSE-2.0
- * 
+ * <p>
  * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
  * an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
  * specific language governing permissions and limitations under the License.
@@ -165,9 +165,8 @@ public class Sender implements Runnable {
 
     /**
      * Run a single iteration of sending
-     * 
-     * @param now
-     *            The current POSIX time in milliseconds
+     *
+     * @param now The current POSIX time in milliseconds
      */
     void run(long now) {
         Cluster cluster = metadata.fetch();
@@ -191,9 +190,9 @@ public class Sender implements Runnable {
 
         // create produce requests
         Map<Integer, List<RecordBatch>> batches = this.accumulator.drain(cluster,
-                                                                         result.readyNodes,
-                                                                         this.maxRequestSize,
-                                                                         now);
+                result.readyNodes,
+                this.maxRequestSize,
+                now);
         if (guaranteeMessageOrder) {
             // Mute all the partitions drained
             for (List<RecordBatch> batchList : batches.values()) {
@@ -253,14 +252,14 @@ public class Sender implements Runnable {
         int correlationId = response.request().request().header().correlationId();
         if (response.wasDisconnected()) {
             log.trace("Cancelled request {} due to node {} being disconnected", response, response.request()
-                                                                                                  .request()
-                                                                                                  .destination());
+                    .request()
+                    .destination());
             for (RecordBatch batch : batches.values())
                 completeBatch(batch, Errors.NETWORK_EXCEPTION, -1L, Record.NO_TIMESTAMP, correlationId, now);
         } else {
             log.trace("Received produce response from node {} with correlation id {}",
-                      response.request().request().destination(),
-                      correlationId);
+                    response.request().request().destination(),
+                    correlationId);
             // if we have a response, parse it
             if (response.hasResponse()) {
                 ProduceResponse produceResponse = new ProduceResponse(response.responseBody());
@@ -273,7 +272,7 @@ public class Sender implements Runnable {
                 }
                 this.sensors.recordLatency(response.request().request().destination(), response.requestLatencyMs());
                 this.sensors.recordThrottleTime(response.request().request().destination(),
-                                                produceResponse.getThrottleTime());
+                        produceResponse.getThrottleTime());
             } else {
                 // this is the acks = 0 case, just complete all requests
                 for (RecordBatch batch : batches.values())
@@ -284,22 +283,22 @@ public class Sender implements Runnable {
 
     /**
      * Complete or retry the given batch of records.
-     * 
-     * @param batch The record batch
-     * @param error The error (or null if none)
-     * @param baseOffset The base offset assigned to the records if successful
-     * @param timestamp The timestamp returned by the broker for this batch
+     *
+     * @param batch         The record batch
+     * @param error         The error (or null if none)
+     * @param baseOffset    The base offset assigned to the records if successful
+     * @param timestamp     The timestamp returned by the broker for this batch
      * @param correlationId The correlation id for the request
-     * @param now The current POSIX time stamp in milliseconds
+     * @param now           The current POSIX time stamp in milliseconds
      */
     private void completeBatch(RecordBatch batch, Errors error, long baseOffset, long timestamp, long correlationId, long now) {
         if (error != Errors.NONE && canRetry(batch, error)) {
             // retry
             log.warn("Got error produce response with correlation id {} on topic-partition {}, retrying ({} attempts left). Error: {}",
-                     correlationId,
-                     batch.topicPartition,
-                     this.retries - batch.attempts - 1,
-                     error);
+                    correlationId,
+                    batch.topicPartition,
+                    this.retries - batch.attempts - 1,
+                    error);
             this.accumulator.reenqueue(batch, now);
             this.sensors.recordRetries(batch.topicPartition.topic(), batch.recordCount);
         } else {
@@ -330,10 +329,18 @@ public class Sender implements Runnable {
 
     /**
      * Transfer the record batches into a list of produce requests on a per-node basis
+     * Sender.createProduceRequests()方法的主要功能：
+     * 将待发送的消封装成ClientRequest,不管一个Node对应有多少个RecordBatch,也不管这些RecordBatch是发给几个分区的,
+     * 每个Node至多生成一个ClientRequest对象,核心逻辑：
+     * 1:将一个NodeId对应的RecordBatch集合,重新整理成为produceRecordsByPartition(Map<TopicPartition, ByteBuffer> )和recordsByPartition(Map<TopicPartition, RecordBatch>)两个集合
+     * 2:创建RequestSend,RequestSend是真正执行网络I/O发送的对象,其格式符合Produce Request(Version:2)协议,其中有效的负载就是produceRecordsByPartition中的数据
+     * 3:创建RequestCompletionHandler作为回调对象
+     * 4:将RequestSend对象和RequestCompletionHandler对象封装进ClientRequest对象,并将其返回
      */
     private List<ClientRequest> createProduceRequests(Map<Integer, List<RecordBatch>> collated, long now) {
         List<ClientRequest> requests = new ArrayList<ClientRequest>(collated.size());
         for (Map.Entry<Integer, List<RecordBatch>> entry : collated.entrySet())
+            //调用produceRequest()方法,将发往同一Node的RecordBatch封装成一个ClientRequest对象
             requests.add(produceRequest(now, entry.getKey(), acks, requestTimeout, entry.getValue()));
         return requests;
     }
@@ -342,23 +349,29 @@ public class Sender implements Runnable {
      * Create a produce request from the given record batches
      */
     private ClientRequest produceRequest(long now, int destination, short acks, int timeout, List<RecordBatch> batches) {
+        /**
+         * produceRecordsByPartition与recordsByPartition的value是不一样的,一个是ByteBuffer,一个是RecordBatch
+         */
         Map<TopicPartition, ByteBuffer> produceRecordsByPartition = new HashMap<TopicPartition, ByteBuffer>(batches.size());
         final Map<TopicPartition, RecordBatch> recordsByPartition = new HashMap<TopicPartition, RecordBatch>(batches.size());
+        //步骤1:将RecordBatch按partition进行分类,整合成上面两个集合
         for (RecordBatch batch : batches) {
             TopicPartition tp = batch.topicPartition;
             produceRecordsByPartition.put(tp, batch.records.buffer());
             recordsByPartition.put(tp, batch);
         }
+        //步骤2:创建ProduceRequest对象和RequestSend对象
         ProduceRequest request = new ProduceRequest(acks, timeout, produceRecordsByPartition);
         RequestSend send = new RequestSend(Integer.toString(destination),
-                                           this.client.nextRequestHeader(ApiKeys.PRODUCE),
-                                           request.toStruct());
+                this.client.nextRequestHeader(ApiKeys.PRODUCE),
+                request.toStruct());
+        //步骤3:创建RequestCompletionHandler回调对象,
         RequestCompletionHandler callback = new RequestCompletionHandler() {
             public void onComplete(ClientResponse response) {
                 handleProduceResponse(response, recordsByPartition, time.milliseconds());
             }
         };
-
+        //创建ClientRequest对象,注意第二个参数,根据生产者ask配置,决定请求是否需要获取响应时间
         return new ClientRequest(now, acks != 0, send, callback);
     }
 
