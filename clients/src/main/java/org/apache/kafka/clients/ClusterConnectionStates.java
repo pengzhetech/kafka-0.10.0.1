@@ -3,9 +3,9 @@
  * file distributed with this work for additional information regarding copyright ownership. The ASF licenses this file
  * to You under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
  * License. You may obtain a copy of the License at
- * 
+ * <p>
  * http://www.apache.org/licenses/LICENSE-2.0
- * 
+ * <p>
  * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
  * an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
  * specific language governing permissions and limitations under the License.
@@ -17,7 +17,9 @@ import java.util.Map;
 
 /**
  * The state of our connection to each node in the cluster.
- * 
+ * NetworkClient中所有的连接状态由ClusterConnectionStates管理,使用Map<String, NodeConnectionState>实现
+ * key是NodeId,value是NodeConnectionState对象,其中使用ConnectionState枚举表示连接状态,
+ * 还记录了最近一次尝试连接的时间戳
  */
 final class ClusterConnectionStates {
     private final long reconnectBackoffMs;
@@ -124,7 +126,7 @@ final class ClusterConnectionStates {
     public void remove(String id) {
         nodeState.remove(id);
     }
-    
+
     /**
      * Get the state of a given connection
      * @param id The id of the connection
@@ -133,7 +135,7 @@ final class ClusterConnectionStates {
     public ConnectionState connectionState(String id) {
         return nodeState(id).state;
     }
-    
+
     /**
      * Get the state of a given node
      * @param id The connection to fetch the state for
@@ -144,7 +146,7 @@ final class ClusterConnectionStates {
             throw new IllegalStateException("No entry found for connection " + id);
         return state;
     }
-    
+
     /**
      * The state of our connection to a node
      */
