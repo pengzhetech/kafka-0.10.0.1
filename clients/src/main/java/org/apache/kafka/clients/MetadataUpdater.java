@@ -23,6 +23,8 @@ import java.util.List;
  * from such metadata. This is an internal class.
  * <p>
  * This class is not thread-safe!
+ *
+ * 一个辅助NetworkClient更新Metadata的接口
  */
 interface MetadataUpdater {
 
