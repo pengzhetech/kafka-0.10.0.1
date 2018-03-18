@@ -247,9 +247,26 @@ public class Sender implements Runnable {
 
     /**
      * Handle a produce response
+     * <p>
+     * 经过NetworkClient一系列的handle*()方法之后,NetworkClient.poll()方法中产生的全部ClientResponse已经被收集到response列表中了
+     * 之后遍历response调用每个ClientRequest中记录的回调,如果是异常响应则请求重发,如果是正常响应,则调用每个消息自定义的Callback
+     * 这里调用的Callback对象,也就是RequestCompletionHandler对象,其onComplete()方法最终调用Sender.handleProduceResponse对象
+     * <p>
+     * Sender.handleProduceResponse()方法主要逻辑:
+     * <p>
+     * (1):如果是因为断开连接或异常而产生的响应:
+     * a:遍历ClientRequest中的RecordBatch,则尝试将RecordBatch重新加入RecordAccumulator,重新发送
+     * b:如果是异常类型不允许充实或重试次数达到上限,则执行RecordBatch.done()方法,此方法会循环调用RecordBatch中每个消息的Callback函数
+     * 并将RecordBatch的producerFuture设置为"异常完成"后,最后释放RecordBatch底层的ByteBuffer
+     * c:最后,根据异常类型,决定是否设置更新Metadata标志
+     * (2):如果是服务端正常的响应或不需要响应的情况下:
+     * a:解析响应
+     * b:遍历ClientRequest中的RecordBatch,并执行RecordBatch的done()方法
+     * c:释放RecordBatch底层的ByteBuffer
      */
     private void handleProduceResponse(ClientResponse response, Map<TopicPartition, RecordBatch> batches, long now) {
         int correlationId = response.request().request().header().correlationId();
+        //对于断开连接而产生的ClientResponse,会重试发送请求,若不能重试,则调用其中每条消息的Callback
         if (response.wasDisconnected()) {
             log.trace("Cancelled request {} due to node {} being disconnected", response, response.request()
                     .request()
@@ -268,12 +285,14 @@ public class Sender implements Runnable {
                     ProduceResponse.PartitionResponse partResp = entry.getValue();
                     Errors error = Errors.forCode(partResp.errorCode);
                     RecordBatch batch = batches.get(tp);
+                    //调用completeBatch()方法处理
                     completeBatch(batch, error, partResp.baseOffset, partResp.timestamp, correlationId, now);
                 }
                 this.sensors.recordLatency(response.request().request().destination(), response.requestLatencyMs());
                 this.sensors.recordThrottleTime(response.request().request().destination(),
                         produceResponse.getThrottleTime());
             } else {
+                //不需要响应的请求,直接调用completeBatch()方法处理
                 // this is the acks = 0 case, just complete all requests
                 for (RecordBatch batch : batches.values())
                     completeBatch(batch, Errors.NONE, -1L, Record.NO_TIMESTAMP, correlationId, now);
@@ -293,6 +312,7 @@ public class Sender implements Runnable {
      */
     private void completeBatch(RecordBatch batch, Errors error, long baseOffset, long timestamp, long correlationId, long now) {
         if (error != Errors.NONE && canRetry(batch, error)) {
+            //对于可重试的RecordBatch,则重新添加到RecordAccumulator中,等待发送
             // retry
             log.warn("Got error produce response with correlation id {} on topic-partition {}, retrying ({} attempts left). Error: {}",
                     correlationId,
@@ -302,18 +322,23 @@ public class Sender implements Runnable {
             this.accumulator.reenqueue(batch, now);
             this.sensors.recordRetries(batch.topicPartition.topic(), batch.recordCount);
         } else {
+            //不能重试的话,会将RecordBatch都标记为"异常完成"
             RuntimeException exception;
+            //获取异常
             if (error == Errors.TOPIC_AUTHORIZATION_FAILED)
                 exception = new TopicAuthorizationException(batch.topicPartition.topic());
             else
                 exception = error.exception();
             // tell the user the result of their request
+            //调用RecordBatch.done方法,调用消息的回调函数
             batch.done(baseOffset, timestamp, exception);
+            //释放空间
             this.accumulator.deallocate(batch);
             if (error != Errors.NONE)
                 this.sensors.recordErrors(batch.topicPartition.topic(), batch.recordCount);
         }
         if (error.exception() instanceof InvalidMetadataException)
+            //标识需要更新Metadata中记录的集群元数据
             metadata.requestUpdate();
         // Unmute the completed partition.
         if (guaranteeMessageOrder)
