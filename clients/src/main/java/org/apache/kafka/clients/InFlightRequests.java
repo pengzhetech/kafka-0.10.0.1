@@ -3,9 +3,9 @@
  * file distributed with this work for additional information regarding copyright ownership. The ASF licenses this file
  * to You under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
  * License. You may obtain a copy of the License at
- * 
+ * <p>
  * http://www.apache.org/licenses/LICENSE-2.0
- * 
+ * <p>
  * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
  * an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
  * specific language governing permissions and limitations under the License.
@@ -22,6 +22,8 @@ import java.util.Map;
 
 /**
  * The set of requests which have been sent or are being sent but haven't yet received a response
+ * InFlightRequests队列的主要作用是缓存了已经发出去但是没有收到响应的ClientRequest
+ * 通过Map<String, Deque<ClientRequest>> 实现 key是NodeId,value是发送到对用Node的ClientRequest集合
  */
 final class InFlightRequests {
 
@@ -63,6 +65,7 @@ final class InFlightRequests {
 
     /**
      * Get the last request we sent to the given node (but don't remove it from the queue)
+     *
      * @param node The node id
      */
     public ClientRequest lastSent(String node) {
@@ -71,6 +74,7 @@ final class InFlightRequests {
 
     /**
      * Complete the last request that was sent to a particular node.
+     *
      * @param node The node the request was sent to
      * @return The request
      */
@@ -80,18 +84,25 @@ final class InFlightRequests {
 
     /**
      * Can we send more requests to this node?
-     * 
+     *
      * @param node Node in question
      * @return true iff we have no requests still being sent to the given node
+     * NetworkClient调用此方法是用于判断是否可以指定Node发送请求的条件之一
+     * queue.peekFirst().request().completed()这个条件为true表示当前队列的队头的请求已经发送完成,如果队头的请求迟迟发送不出去
+     * 则可能是网络问题,则不能继续向此Node发送请求,此外,对头的消息与对应KafkaChannel.send字段指向的是同一个消息,
+     * 为了避免未发送的消息被覆盖,也不能让KafkaChannel.send指向新的请求
+     * queue.size() < this.maxInFlightRequestsPerConnection 条件是为了判断InFlightRequests队列中是否堆积过多请求
+     * 如果Node已经堆积了很多未响应的请求,说明这个节点负载可能较大或者网络有连接有问题,继续向其发送请求,则可能导致请求超时
      */
     public boolean canSendMore(String node) {
         Deque<ClientRequest> queue = requests.get(node);
         return queue == null || queue.isEmpty() ||
-               (queue.peekFirst().request().completed() && queue.size() < this.maxInFlightRequestsPerConnection);
+                (queue.peekFirst().request().completed() && queue.size() < this.maxInFlightRequestsPerConnection);
     }
 
     /**
      * Return the number of inflight requests directed at the given node
+     *
      * @param node The node
      * @return The request count.
      */
@@ -112,7 +123,7 @@ final class InFlightRequests {
 
     /**
      * Clear out all the in-flight requests for the given node and return them
-     * 
+     *
      * @param node The node
      * @return All the in-flight requests for that node that have been removed
      */
@@ -128,7 +139,7 @@ final class InFlightRequests {
     /**
      * Returns a list of nodes with pending inflight request, that need to be timed out
      *
-     * @param now current time in milliseconds
+     * @param now            current time in milliseconds
      * @param requestTimeout max time to wait for the request to be completed
      * @return list of nodes
      */
