@@ -13,7 +13,20 @@
       <entry name="!?*.java"/>
     </wildcardResourcePatterns>
     <annotationProcessing enabled="false" useClasspath="true"/>
-    <bytecodeTargetLevel target="1.7"/>
+    <bytecodeTargetLevel target="1.8">
+      <module name="clients" target="1.7"/>
+      <module name="connect" target="1.7"/>
+      <module name="core" target="1.7"/>
+      <module name="kafka-0.10.0.1-examples" target="1.7"/>
+      <module name="log4j-appender" target="1.7"/>
+      <module name="streams" target="1.7"/>
+      <module name="tools" target="1.7"/>
+      <module name="api" target="1.7"/>
+      <module name="file" target="1.7"/>
+      <module name="json" target="1.7"/>
+      <module name="runtime" target="1.7"/>
+      <module name="streams-examples" target="1.7"/>
+    </bytecodeTargetLevel>
   </component>
   <component name="CopyrightManager" default="">
     <module2copyright/>
@@ -48,11 +61,11 @@
   </component>
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/kafka-0.10.0.1-src.iml" filepath="$PROJECT_DIR$/kafka-0.10.0.1-src.iml"/>
+      <module fileurl="file://$PROJECT_DIR$/kafka-0.10.0.1.iml" filepath="$PROJECT_DIR$/kafka-0.10.0.1.iml"/>
       <module fileurl="file://$PROJECT_DIR$/clients/clients.iml" filepath="$PROJECT_DIR$/clients/clients.iml"/>
       <module fileurl="file://$PROJECT_DIR$/connect/connect.iml" filepath="$PROJECT_DIR$/connect/connect.iml"/>
       <module fileurl="file://$PROJECT_DIR$/core/core.iml" filepath="$PROJECT_DIR$/core/core.iml"/>
-      <module fileurl="file://$PROJECT_DIR$/examples/kafka-0.10.0.1-src-examples.iml" filepath="$PROJECT_DIR$/examples/kafka-0.10.0.1-src-examples.iml"/>
+      <module fileurl="file://$PROJECT_DIR$/examples/kafka-0.10.0.1-examples.iml" filepath="$PROJECT_DIR$/examples/kafka-0.10.0.1-examples.iml"/>
       <module fileurl="file://$PROJECT_DIR$/log4j-appender/log4j-appender.iml" filepath="$PROJECT_DIR$/log4j-appender/log4j-appender.iml"/>
       <module fileurl="file://$PROJECT_DIR$/streams/streams.iml" filepath="$PROJECT_DIR$/streams/streams.iml"/>
       <module fileurl="file://$PROJECT_DIR$/tools/tools.iml" filepath="$PROJECT_DIR$/tools/tools.iml"/>
@@ -63,7 +76,7 @@
       <module fileurl="file://$PROJECT_DIR$/streams/examples/streams-examples.iml" filepath="$PROJECT_DIR$/streams/examples/streams-examples.iml"/>
     </modules>
   </component>
-  <component name="ProjectRootManager" version="2" languageLevel="JDK_1_7" assert-keyword="true" jdk-15="true" project-jdk-type="JavaSDK" assert-jdk-15="true" project-jdk-name="1.8">
+  <component name="ProjectRootManager" version="2" languageLevel="JDK_1_8" assert-keyword="true" jdk-15="true" project-jdk-type="JavaSDK" assert-jdk-15="true" project-jdk-name="1.8">
     <output url="file://$PROJECT_DIR$/out"/>
   </component>
   <component name="SvnBranchConfigurationManager">
