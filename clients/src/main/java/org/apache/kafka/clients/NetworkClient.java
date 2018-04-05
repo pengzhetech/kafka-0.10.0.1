@@ -57,15 +57,23 @@ public class NetworkClient implements KafkaClient {
      * 使用NIO非阻塞模式实现网络I/O操作,KSelect使用单独的一个线程可以管理多条网络上的连接,读,写操作
      */
     private final Selectable selector;
-
+    /**
+     * 一个辅助NetworkClient更新Metadata的接口
+     */
     private final MetadataUpdater metadataUpdater;
 
     private final Random randOffset;
 
     /* the state of each node's connection */
+    /**
+     * NetworkClient中所有的连接状态
+     */
     private final ClusterConnectionStates connectionStates;
 
     /* the set of requests currently being sent or awaiting a response */
+    /**
+     * 缓存了已经发出去但是没有收到响应的ClientRequest
+     */
     private final InFlightRequests inFlightRequests;
 
     /* the socket send buffer size in bytes */

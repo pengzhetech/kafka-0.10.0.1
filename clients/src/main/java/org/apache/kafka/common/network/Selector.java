@@ -53,7 +53,7 @@ import org.slf4j.LoggerFactory;
  * responses.
  * <p>
  * A connection can be added to the nioSelector associated with an integer id by doing
- * <p>
+ *
  * <pre>
  * nioSelector.connect(&quot;42&quot;, new InetSocketAddress(&quot;google.com&quot;, server.port), 64000, 64000);
  * </pre>
@@ -63,7 +63,7 @@ import org.slf4j.LoggerFactory;
  * <p>
  * Sending requests, receiving responses, processing connection completions, and disconnections on the existing
  * connections are all done using the <code>poll()</code> call.
- * <p>
+ *
  * <pre>
  * nioSelector.send(new NetworkSend(myDestination, myBytes));
  * nioSelector.send(new NetworkSend(myOtherDestination, myOtherBytes));
@@ -287,6 +287,14 @@ public class Selector implements Selectable {
     }
 
     /**
+     * poll()方法时真正执行网络I/O的方法,它会调用nioSelector.select()方法等待I/O事件发生
+     * 当Channel可写时,发送KafkaChannel.send字段(切记:一次最多只能发送一个RequestSend,有时候一个RequestSend也发不完
+     * 需要多次poll才能发送完成)
+     * 当Channel可读时,读取数据到KafkaChannel.receive,读取一个完整的NetworkReceive后
+     * 会将其缓存到targetReceives,当一次pollSelectionKeys完成后会将targetReceives
+     * 中的数据转移到completeReceives
+     * 最后调用maybeCloseOldestConnection()方法根据lruConnections记录和connectionsMaxIdleNanos最大空闲时间
+     * 关闭长期空闲连接
      * Do whatever I/O can be done on each connection without blocking. This includes completing connections, completing
      * disconnections, initiating new sends, or making progress on in-progress sends or receives.
      * <p>
@@ -311,14 +319,6 @@ public class Selector implements Selectable {
      * @throws IllegalStateException    If a send is given for which we have no existing connection or for which there is
      *                                  already an in-progress send
      *                                  <p>
-     *                                  poll()方法时真正执行网络I/O的方法,它会调用nioSelector.select()方法等待I/O事件发生
-     *                                  当Channel可写时,发送KafkaChannel.send字段(切记:一次最多只能发送一个RequestSend,有时候一个RequestSend也发不完
-     *                                  需要多次poll才能发送完成)
-     *                                  当Channel可读时,读取数据到KafkaChannel.receive,读取一个完整的NetworkReceive后
-     *                                  会将其缓存到targetReceives,当一次pollSelectionKeys完成后会将targetReceives
-     *                                  中的数据转移到completeReceives
-     *                                  最后调用maybeCloseOldestConnection()方法根据lruConnections记录和connectionsMaxIdleNanos最大空闲时间
-     *                                  关闭长期空闲连接
      */
 
     @Override

@@ -3,9 +3,9 @@
  * file distributed with this work for additional information regarding copyright ownership. The ASF licenses this file
  * to You under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
  * License. You may obtain a copy of the License at
- *
+ * <p>
  * http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
  * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
  * an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
  * specific language governing permissions and limitations under the License.
@@ -64,7 +64,7 @@ import org.slf4j.LoggerFactory;
 
 /**
  * A Kafka client that publishes records to the Kafka cluster.
- * <P>
+ * <p>
  * The producer is <i>thread safe</i> and sharing a single producer instance across threads will generally be faster than
  * having multiple instances.
  * <p>
@@ -93,30 +93,73 @@ import org.slf4j.LoggerFactory;
  * as well as a background I/O thread that is responsible for turning these records into requests and transmitting them
  * to the cluster. Failure to close the producer after use will leak these resources.
  * <p>
+ * send()方法是异步的!,将消息发送到RecordAccumulator就会返回
  * The {@link #send(ProducerRecord) send()} method is asynchronous. When called it adds the record to a buffer of pending record sends
  * and immediately returns. This allows the producer to batch together individual records for efficiency.
  * <p>
+ * 生产者配置参数
+ * <p>
+ * 1:acks  这个配置是控制消息是否完成的标准
+ * 必须有多少个分区副本收到消息,生产者才认为消息时写入成功的,这个参数对消息丢失的可能性有重要影响
+ * acks=0
+ * 生产者在成功写入消息之前不会有任何来自服务器的响应,也就是说如果当中任何环节出现问题,导致服务器没有收到消息
+ * 那么生产者就无从得知,也就是消息丢失了
+ * 不过因为生产者不需要等待服务器的响应,所以他能以网络能支持的最大速度发送消息,从而达到很高的吞吐率
+ * acks=1
+ * 只要集群的leader节点收到此消息,生产者就会收到一个来自服务器的成功响应
+ * 如果消息无法到达leader节点(比如leader崩溃,新的leader节点还没有被选举出来)生产者会收到一个错误响应
+ * 为了避免消息丢失,生产者会重发消息,不过如果一个没有收到消息的节点成为新leader,消息还是会丢失
+ * 这时候生产者的吞吐量率取决于使用的是同步发送还是异步发送
+ * 如果让客户端等待服务器的响应(通过调用Future对象的get()方法),显然会增加延迟(在网络上传输一个来回的延迟)
+ * 如果客户端使用的回调,延迟问题就会得到缓解,不过吞吐量还是会受到发送消息数量的限制(比如生产者在收到服务器之前可以发送多少个消息)
+ * acks=all
+ * 只有当所有参与复制的节点全部收到消息时,生产者才会收到一个来自服务器的成功响应
+ * 这种模式是最安全的,它可以保证不止一个服务器收到消息,就算有服务器发生崩溃,整个集群任然可以运行
+ * 不过他的延迟是最高的,因为我们要等待的不只一个服务器节点接收消息然后响应(服务端接收的消息需要落盘)
  * The <code>acks</code> config controls the criteria under which requests are considered complete. The "all" setting
  * we have specified will result in blocking on the full commit of the record, the slowest but most durable setting.
  * <p>
+ * <p>
+ * 2:retries
+ * <p>
+ * 生产者从服务器收到的错误有可能是临时性错误(比如分区找不到leader),在这种情况下,retries参数的值决定了生产者可以重发消息的次数
+ * 默认情况下,生产者会在每次重试之间等待100ms,不过可以通过retry.backoff.ms参数来改变这个时间间隔
+ * 建议在设置重试次数和重试时间间隔之前,先测试一下恢复一个崩溃节点需要多少时间(比如所有分区选举出leader需要多长时间)
+ * 让总的重试时间比kafka集群从崩溃中恢复的时间长,否则生产者会过早的放弃重试
+ * 不过有些错误不是临时性的,没办法通过重试来解决(比如"消息太大错误")
+ * 一般情况下,因为生产者会自动进行重试,所有就没必要再代码逻辑里处理那些可重试的错误,只需处理那些不可重试的错误或重试次数超过上限的情况
+ * <p>
+ * 如果发送失败,会自动重发,可能会造成消息重复
  * If the request fails, the producer can automatically retry, though since we have specified <code>retries</code>
  * as 0 it won't. Enabling retries also opens up the possibility of duplicates (see the documentation on
  * <a href="http://kafka.apache.org/documentation.html#semantics">message delivery semantics</a> for details).
  * <p>
+ * 生产者为每个partition缓冲消息
  * The producer maintains buffers of unsent records for each partition. These buffers are of a size specified by
  * the <code>batch.size</code> config. Making this larger can result in more batching, but requires more memory (since we will
  * generally have one of these buffers for each active partition).
  * <p>
+ * <p>
+ * <p>
+ * 3:linger.ms
+ * 该参数指定了生产者在发送批次之前等待更多的消息加入批次的时间
+ * kafkaProducer会在批次填满或linger.ms到达上线时就会把批次发送出去,默认情况下,只要有可用的线程,生产者就会把消息发送出去
+ * 即使批次里只有一条消息,把linger.ms设置成比0大的数,让生产者在发送批次之前等待一会儿,是更多的消息加入到这个批次
+ * 虽然这样会增加延迟,但也会提升吞吐率(因为一次可以发送更多消息,每个消息的开销就变小了)
+ * <p>
  * By default a buffer is available to send immediately even if there is additional unused space in the buffer. However if you
  * want to reduce the number of requests you can set <code>linger.ms</code> to something greater than 0. This will
  * instruct the producer to wait up to that number of milliseconds before sending a request in hope that more records will
- * arrive to fill up the same batch. This is analogous to Nagle's algorithm in TCP. For example, in the code snippet above,
+ * arrive to fill up the same batch. This is analogous(类似) to Nagle's algorithm(算法) in TCP. For example, in the code snippet(片段) above,
  * likely all 100 records would be sent in a single request since we set our linger time to 1 millisecond. However this setting
- * would add 1 millisecond of latency to our request waiting for more records to arrive if we didn't fill up the buffer. Note that
+ * would add 1 millisecond of latency(潜伏) to our request waiting for more records to arrive if we didn't fill up the buffer. Note that
  * records that arrive close together in time will generally batch together even with <code>linger.ms=0</code> so under heavy load
  * batching will occur regardless of the linger configuration; however setting this to something larger than 0 can lead to fewer, more
  * efficient requests when not under maximal load at the cost of a small amount of latency.
  * <p>
+ * 4:buffer.memory参数用来设置生产者缓冲区的大小
+ * 生成者用他来缓冲要发送到服务器的消息,如果应用程序发送消息的速度超过发送到服务器的速度,会导致生产者空间不足,这个时候
+ * send()方法要么被阻塞,要么抛出异常,这取决于如何设置max.block.ms(即发送消息时最大的阻塞时间)
  * The <code>buffer.memory</code> controls the total amount of memory available to the producer for buffering. If records
  * are sent faster than they can be transmitted to the server then this buffer space will be exhausted. When the buffer space is
  * exhausted additional send calls will block. The threshold for time to block is determined by <code>max.block.ms</code> after which it throws
@@ -125,6 +168,20 @@ import org.slf4j.LoggerFactory;
  * The <code>key.serializer</code> and <code>value.serializer</code> instruct how to turn the key and value objects the user provides with
  * their <code>ProducerRecord</code> into bytes. You can use the included {@link org.apache.kafka.common.serialization.ByteArraySerializer} or
  * {@link org.apache.kafka.common.serialization.StringSerializer} for simple string or byte types.
+ * 5:batch.size
+ * 当有多个消息需要被发送到同一个分区时,生产者会把他们放到同一个批次里
+ * 该参数指定了一个批次可以使用的内存大小(按照字节数计算,不是消息个数)
+ * 当批次被填满时,批次里的所有消息会被发送出去,不过生产者也并不一定会等到批次填满才发送
+ * 半满的批次,甚至只包含一个消息的批次也有可能被发送
+ * 所以就算把批次设置的很,也不会造成延迟,只是会占用更多的内存而已,
+ * 但是如果设置的太小,因为生产者需要更频繁的发送消息,会增加一些额外的开销
+ * 6:compression.type
+ * 默认情况下,消息发送时不会被压缩,该参数可以设置为snappy,gzip,lz4,他指定了消息发送到broker之前使用哪一种压缩算法进行压缩
+ * snappy算法由Google发明,它占用较小的cpu,却能提供较好的性能和相当可观的压缩比,如果比较关注性能和网络带宽,可以使用
+ * gzip算法一般会占用较多的cpu资源,但会提供更高的压缩比,如果网络带宽资源有限,可以考虑使用这种算法
+ * 使用压缩可以降低网络传输开销和存储开销,这往往是kafka发送消息的瓶颈
+ * 7:max.in.flight.requests.per.connection
+ * 该参数指定了生产者在收到服务器响应之前可以发送多少个消息
  */
 public class KafkaProducer<K, V> implements Producer<K, V> {
 
@@ -156,8 +213,8 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
      * are documented <a href="http://kafka.apache.org/documentation.html#producerconfigs">here</a>. Values can be
      * either strings or Objects of the appropriate type (for example a numeric configuration would accept either the
      * string "42" or the integer 42).
-     * @param configs   The producer configs
      *
+     * @param configs The producer configs
      */
     public KafkaProducer(Map<String, Object> configs) {
         this(new ProducerConfig(configs), null, null);
@@ -168,21 +225,23 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
      * Valid configuration strings are documented <a href="http://kafka.apache.org/documentation.html#producerconfigs">here</a>.
      * Values can be either strings or Objects of the appropriate type (for example a numeric configuration would accept
      * either the string "42" or the integer 42).
-     * @param configs   The producer configs
-     * @param keySerializer  The serializer for key that implements {@link Serializer}. The configure() method won't be
-     *                       called in the producer when the serializer is passed in directly.
-     * @param valueSerializer  The serializer for value that implements {@link Serializer}. The configure() method won't
-     *                         be called in the producer when the serializer is passed in directly.
+     *
+     * @param configs         The producer configs
+     * @param keySerializer   The serializer for key that implements {@link Serializer}. The configure() method won't be
+     *                        called in the producer when the serializer is passed in directly.
+     * @param valueSerializer The serializer for value that implements {@link Serializer}. The configure() method won't
+     *                        be called in the producer when the serializer is passed in directly.
      */
     public KafkaProducer(Map<String, Object> configs, Serializer<K> keySerializer, Serializer<V> valueSerializer) {
         this(new ProducerConfig(ProducerConfig.addSerializerToConfig(configs, keySerializer, valueSerializer)),
-             keySerializer, valueSerializer);
+                keySerializer, valueSerializer);
     }
 
     /**
      * A producer is instantiated by providing a set of key-value pairs as configuration. Valid configuration strings
      * are documented <a href="http://kafka.apache.org/documentation.html#producerconfigs">here</a>.
-     * @param properties   The producer configs
+     *
+     * @param properties The producer configs
      */
     public KafkaProducer(Properties properties) {
         this(new ProducerConfig(properties), null, null);
@@ -191,15 +250,16 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
     /**
      * A producer is instantiated by providing a set of key-value pairs as configuration, a key and a value {@link Serializer}.
      * Valid configuration strings are documented <a href="http://kafka.apache.org/documentation.html#producerconfigs">here</a>.
-     * @param properties   The producer configs
-     * @param keySerializer  The serializer for key that implements {@link Serializer}. The configure() method won't be
-     *                       called in the producer when the serializer is passed in directly.
-     * @param valueSerializer  The serializer for value that implements {@link Serializer}. The configure() method won't
-     *                         be called in the producer when the serializer is passed in directly.
+     *
+     * @param properties      The producer configs
+     * @param keySerializer   The serializer for key that implements {@link Serializer}. The configure() method won't be
+     *                        called in the producer when the serializer is passed in directly.
+     * @param valueSerializer The serializer for value that implements {@link Serializer}. The configure() method won't
+     *                        be called in the producer when the serializer is passed in directly.
      */
     public KafkaProducer(Properties properties, Serializer<K> keySerializer, Serializer<V> valueSerializer) {
         this(new ProducerConfig(ProducerConfig.addSerializerToConfig(properties, keySerializer, valueSerializer)),
-             keySerializer, valueSerializer);
+                keySerializer, valueSerializer);
     }
 
     @SuppressWarnings({"unchecked", "deprecation"})
@@ -398,7 +458,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
      *               });
      * }
      * </pre>
-     *
+     * <p>
      * Callbacks for records being sent to the same partition are guaranteed to execute in order. That is, in the
      * following example <code>callback1</code> is guaranteed to execute before <code>callback2</code>:
      *
@@ -414,14 +474,12 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
      * expensive callbacks it is recommended to use your own {@link java.util.concurrent.Executor} in the callback body
      * to parallelize processing.
      *
-     * @param record The record to send
+     * @param record   The record to send
      * @param callback A user-supplied callback to execute when the record has been acknowledged by the server (null
-     *        indicates no callback)
-     *
-     * @throws InterruptException If the thread is interrupted while blocked
+     *                 indicates no callback)
+     * @throws InterruptException     If the thread is interrupted while blocked
      * @throws SerializationException If the key or value are not valid objects given the configured serializers
-     * @throws TimeoutException if the time taken for fetching metadata or allocating memory for the record has surpassed <code>max.block.ms</code>.
-     *
+     * @throws TimeoutException       if the time taken for fetching metadata or allocating memory for the record has surpassed <code>max.block.ms</code>.
      */
     @Override
     public Future<RecordMetadata> send(ProducerRecord<K, V> record, Callback callback) {
@@ -507,7 +565,8 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
 
     /**
      * Wait for cluster metadata including partitions for the given topic to be available.
-     * @param topic The topic we want metadata for
+     *
+     * @param topic     The topic we want metadata for
      * @param maxWaitMs The maximum time in ms for waiting on the metadata
      * @return The amount of time we waited in ms
      */
@@ -542,14 +601,14 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
     private void ensureValidRecordSize(int size) {
         if (size > this.maxRequestSize)
             throw new RecordTooLargeException("The message is " + size +
-                                              " bytes when serialized which is larger than the maximum request size you have configured with the " +
-                                              ProducerConfig.MAX_REQUEST_SIZE_CONFIG +
-                                              " configuration.");
+                    " bytes when serialized which is larger than the maximum request size you have configured with the " +
+                    ProducerConfig.MAX_REQUEST_SIZE_CONFIG +
+                    " configuration.");
         if (size > this.totalMemorySize)
             throw new RecordTooLargeException("The message is " + size +
-                                              " bytes when serialized which is larger than the total memory buffer you have configured with the " +
-                                              ProducerConfig.BUFFER_MEMORY_CONFIG +
-                                              " configuration.");
+                    " bytes when serialized which is larger than the total memory buffer you have configured with the " +
+                    ProducerConfig.BUFFER_MEMORY_CONFIG +
+                    " configuration.");
     }
 
     /**
@@ -574,7 +633,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
      * consumer.commit();
      * }
      * </pre>
-     *
+     * <p>
      * Note that the above example may drop records if the produce request fails. If we want to ensure that this does not occur
      * we need to set <code>retries=&lt;large_number&gt;</code> in our config.
      *
@@ -594,6 +653,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
 
     /**
      * Get the partition metadata for the give topic. This can be used for custom partitioning.
+     *
      * @throws InterruptException If the thread is interrupted while blocked
      */
     @Override
@@ -617,7 +677,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
     /**
      * Close this producer. This method blocks until all previously sent requests complete.
      * This method is equivalent to <code>close(Long.MAX_VALUE, TimeUnit.MILLISECONDS)</code>.
-     * <p>
+     *
      * <strong>If close() is called from {@link Callback}, a warning message will be logged and close(0, TimeUnit.MILLISECONDS)
      * will be called instead. We do this because the sender thread would otherwise try to join itself and
      * block forever.</strong>
@@ -640,10 +700,10 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
      * <code>close(0, TimeUnit.MILLISECONDS)</code>. This is done since no further sending will happen while
      * blocking the I/O thread of the producer.
      *
-     * @param timeout The maximum time to wait for producer to complete any pending requests. The value should be
-     *                non-negative. Specifying a timeout of zero means do not wait for pending send requests to complete.
+     * @param timeout  The maximum time to wait for producer to complete any pending requests. The value should be
+     *                 non-negative. Specifying a timeout of zero means do not wait for pending send requests to complete.
      * @param timeUnit The time unit for the <code>timeout</code>
-     * @throws InterruptException If the thread is interrupted while blocked
+     * @throws InterruptException       If the thread is interrupted while blocked
      * @throws IllegalArgumentException If the <code>timeout</code> is negative.
      */
     @Override
@@ -662,7 +722,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
         if (timeout > 0) {
             if (invokedFromCallback) {
                 log.warn("Overriding close timeout {} ms to 0 ms in order to prevent useless blocking due to self-join. " +
-                    "This means you have incorrectly invoked close with a non-zero timeout from the producer call-back.", timeout);
+                        "This means you have incorrectly invoked close with a non-zero timeout from the producer call-back.", timeout);
             } else {
                 // Try to close gracefully.
                 if (this.sender != null)
@@ -680,7 +740,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
 
         if (this.sender != null && this.ioThread != null && this.ioThread.isAlive()) {
             log.info("Proceeding to force close the producer since pending requests could not be completed " +
-                "within timeout {} ms.", timeout);
+                    "within timeout {} ms.", timeout);
             this.sender.forceClose();
             // Only join the sender thread when not calling from callback.
             if (!invokedFromCallback) {
@@ -707,7 +767,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
      * if the record has partition returns the value otherwise
      * calls configured partitioner class to compute the partition.
      */
-    private int partition(ProducerRecord<K, V> record, byte[] serializedKey , byte[] serializedValue, Cluster cluster) {
+    private int partition(ProducerRecord<K, V> record, byte[] serializedKey, byte[] serializedValue, Cluster cluster) {
         Integer partition = record.partition();
         if (partition != null) {
             List<PartitionInfo> partitions = cluster.partitionsForTopic(record.topic());
@@ -719,7 +779,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
             return partition;
         }
         return this.partitioner.partition(record.topic(), record.key(), serializedKey, record.value(), serializedValue,
-            cluster);
+                cluster);
     }
 
     private static class FutureFailure implements Future<RecordMetadata> {
@@ -777,7 +837,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
             if (this.interceptors != null) {
                 if (metadata == null) {
                     this.interceptors.onAcknowledgement(new RecordMetadata(tp, -1, -1, Record.NO_TIMESTAMP, -1, -1, -1),
-                                                        exception);
+                            exception);
                 } else {
                     this.interceptors.onAcknowledgement(metadata, exception);
                 }
