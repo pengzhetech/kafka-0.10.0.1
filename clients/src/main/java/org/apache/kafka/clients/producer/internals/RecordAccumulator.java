@@ -381,8 +381,8 @@ public final class RecordAccumulator {
                         long waitedTimeMs = nowMs - batch.lastAttemptMs;
                         long timeToWaitMs = backingOff ? retryBackoffMs : lingerMs;
                         long timeLeftMs = Math.max(timeToWaitMs - waitedTimeMs, 0);
-                        boolean full = deque.size() > 1 || batch.records.isFull();
-                        boolean expired = waitedTimeMs >= timeToWaitMs;
+                        boolean full = deque.size() > 1 || batch.records.isFull();//条件一
+                        boolean expired = waitedTimeMs >= timeToWaitMs;//条件二 exhausted条件三  flushInProgress条件四  closed条件五
                         boolean sendable = full || expired || exhausted || closed || flushInProgress();
                         if (sendable && !backingOff) {
                             readyNodes.add(leader);
