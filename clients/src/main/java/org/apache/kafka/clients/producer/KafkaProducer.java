@@ -614,14 +614,33 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
                         " to class " + producerConfig.getClass(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG).getName() +
                         " specified in value.serializer");
             }
+            /**
+             *3:获取分区
+             * 计算ProducerRecord将被发往的分区对应的partitionId
+             */
             int partition = partition(record, serializedKey, serializedValue, metadata.fetch());
+            /**
+             *4:检验ProducerRecord长度有效性
+             * 检验ProducerRecord总长度是否超过了${max.request.size}及${buffer.memory}所设阈值
+             * 超过任何一项阈值配置都会跑出RecordTooLargeException
+             */
             int serializedSize = Records.LOG_OVERHEAD + Record.recordSize(serializedKey, serializedValue);
             ensureValidRecordSize(serializedSize);
+            /**
+             * 5:创建TopicPartition对象,根据ProducerRecord对应的topic及partitionId,创建一个TopicPartition对象
+             * 在RecordAccumulator中会为每一个TopicPartition创建一个双端队列Deque
+             */
             tp = new TopicPartition(record.topic(), partition);
             long timestamp = record.timestamp() == null ? time.milliseconds() : record.timestamp();
             log.trace("Sending record {} with callback {} to topic {} partition {}", record, callback, record.topic(), partition);
             // producer callback will make sure to call both 'callback' and interceptor callback
+            /**
+             * 6:构造Callback对象,由KafkaProducer实例化定义的ProducerInterceptors和Callback重新构造一个Callback对象,该对象最终会交由RecordBatch处理
+             */
             Callback interceptCallback = this.interceptors == null ? callback : new InterceptorCallback<>(callback, this.interceptors, tp);
+            /**
+             * 7:写入BufferPool操作,调用append()方法将ProducerRecord写入RecordAccumulator的BufferPool中
+             */
             RecordAccumulator.RecordAppendResult result = accumulator.append(tp, timestamp, serializedKey, serializedValue, interceptCallback, remainingWaitMs);
             if (result.batchIsFull || result.newBatchCreated) {
                 log.trace("Waking up the sender since topic {} partition {} is either full or getting a new batch", record.topic(), partition);
