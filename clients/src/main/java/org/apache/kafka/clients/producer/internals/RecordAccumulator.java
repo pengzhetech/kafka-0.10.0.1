@@ -60,7 +60,13 @@ public final class RecordAccumulator {
     private static final Logger log = LoggerFactory.getLogger(RecordAccumulator.class);
 
     private volatile boolean closed;
+    /**
+     * 用于flush操作控制计数器
+     */
     private final AtomicInteger flushesInProgress;
+    /**
+     * append操作计数器
+     */
     private final AtomicInteger appendsInProgress;
     /**
      * 指定每个RecordBatch底层ByteBuffer的大小
@@ -83,10 +89,14 @@ public final class RecordAccumulator {
      * 每个Deque中都保存了发往对应TopicPartition的RecordBatch集合
      */
     private final ConcurrentMap<TopicPartition, Deque<RecordBatch>> batches;
+    /**
+     * 保存已被写入内存而为被Send线程处理的RecordBatch
+     */
     private final IncompleteRecordBatches incomplete;
     // The following variables are only accessed by the sender thread, so we don't need to protect them.
     /**
      * 未发送完成的RecordBatch集合
+     * 消息已发送但还未收到broker的ack的TopicPartition
      */
     private final Set<TopicPartition> muted;
     /**

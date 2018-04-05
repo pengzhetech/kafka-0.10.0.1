@@ -313,7 +313,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
             this.metrics = new Metrics(metricConfig, reporters, time);
             //通过反射机制实例化配置的Partitioner类,KeySerializer,ValueSerializer类
             /**
-             * 实例化分区器
+             * 3:实例化分区器
              * 分区器用于指定分区,客户端可以通过实现Partitioner接口自定义分配分区的规则.若用户没有自定义分区器,则在KafkaProducer实例化时
              * 会使用默认的DefaultPartitioner 该分区器分配分区的规则是:
              * 若消息自定了key,则对key取hash值，然后与可用的分区总数求模
@@ -326,6 +326,14 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
             //获取retry.backoff.ms(默认是100ms)
             long retryBackoffMs = config.getLong(ProducerConfig.RETRY_BACKOFF_MS_CONFIG);
             //创建kafka集群的元数据
+            /**
+             * 4:实例化用于消息发送相关元数据信息的Metadata对象
+             * Metadata对象被客户端线程共享 所以必须是线程安全的
+             * Metadata的主要数据结构由两部分组成 一类是用户控制Metadata进程更新操作的相关配置信息
+             * 另一类就是集群信息Cluster，Cluster保存了进群中所有topic以及所有topic对应的partition信息列表
+             * 可用的partition,集群的broker信息等
+             * 在kafkaProducer实例化过程中会根据指定的broker列表初始化Cluster，并第一次更新Metadata
+             */
             this.metadata = new Metadata(retryBackoffMs, config.getLong(ProducerConfig.METADATA_MAX_AGE_CONFIG));
             //获取max.request.size大小
             this.maxRequestSize = config.getInt(ProducerConfig.MAX_REQUEST_SIZE_CONFIG);
@@ -371,6 +379,18 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
                 this.requestTimeoutMs = config.getInt(ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG);
             }
             //创建RecordAccumulator
+            /**
+             * 实例化用户存储消息的RecordAccumulator
+             * RecordAccumulator的作用类似于一个队列,这里成为消息累加器
+             * KafkaProducer发送的消息都会被追加到消息累加器的一个双端队列Deque中
+             * 在消息累加器的内部每个主题的每个分区TopicPartition对应一个双端队列
+             * 队列中的元素是RecordBatch，RecordBatch是由同一个主题发往同一个分区的多条消息Record组成
+             * 并将结果以每个TopicPartition作为key,该TopicPartition所对应的双端队列作为Value保存到一个ConcurrentMap类型的bathes中
+             * 采用双端队列是为了当消息发送失败需要重试时,将消息优先插入到队列的头部,而最新的消息总是插入队列的尾部
+             * 只有当消息重试发送时才在队列头部插入，发送消息是从头部获取RecordBatch 这样就实现了对发送失败的消息进行重新发送
+             * 但是双端队列只是指定了RecordBatch的顺序存储方法 并未定义存储空间大小
+             * 在消息累加器中有一个BufferPool缓存数据结构 用于存储消息Record 在KafkaProducer初始化时需要根据指定的BufferPool大小初始化一个BufferPool,引用名为free
+             */
             this.accumulator = new RecordAccumulator(config.getInt(ProducerConfig.BATCH_SIZE_CONFIG),
                     this.totalMemorySize,
                     this.compressionType,
@@ -379,7 +399,10 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
                     metrics,
                     time);
             List<InetSocketAddress> addresses = ClientUtils.parseAndValidateAddresses(config.getList(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG));
-            //更新kafka集群的元数据
+
+            /**
+             * //更新kafka集群的元数据
+             */
             this.metadata.update(Cluster.bootstrap(addresses), time.milliseconds());
             ChannelBuilder channelBuilder = ClientUtils.createChannelBuilder(config.values());
             //创建NetworkClient,这是KafkaProducer的网络I/O核心,
@@ -409,7 +432,11 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
             this.ioThread.start();
 
             this.errors = this.metrics.sensor("errors");
-
+            /**
+             * 4:实例化消息key和value进行序列化操作的Serializer
+             * Kafka实现了7中基本类型的Serializer,如BytesSerializer,LongSerializer
+             * 用户也可以自定义序列化方式(kafka推荐使用Avro)，默认key和value使用ByteArraySerializer
+             */
             if (keySerializer == null) {
                 this.keySerializer = config.getConfiguredInstance(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG,
                         Serializer.class);
@@ -429,6 +456,11 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
 
             // load interceptors and make sure they get clientId
             userProvidedConfigs.put(ProducerConfig.CLIENT_ID_CONFIG, clientId);
+            /**
+             * 5:根据配置实例化一组拦截器(ProducerInterceptor),用户可以指定多个拦截器
+             * 如果我们希望在消息发送前，消息发送到broker并ack,，消息还未到达broker而失败或调用send()方法失败这几种情景下进行相应处理
+             * 就可以通过自定义拦截器实现该接口中相应的方法.多个拦截器会被顺序执行
+             */
             List<ProducerInterceptor<K, V>> interceptorList = (List) (new ProducerConfig(userProvidedConfigs)).getConfiguredInstances(ProducerConfig.INTERCEPTOR_CLASSES_CONFIG,
                     ProducerInterceptor.class);
             this.interceptors = interceptorList.isEmpty() ? null : new ProducerInterceptors<>(interceptorList);
