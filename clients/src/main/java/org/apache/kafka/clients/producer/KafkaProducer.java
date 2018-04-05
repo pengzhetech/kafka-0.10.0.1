@@ -572,6 +572,10 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
     @Override
     public Future<RecordMetadata> send(ProducerRecord<K, V> record, Callback callback) {
         // intercept the record, which can be potentially modified; this method does not throw exceptions
+        /**
+         * 首先,若客户端指定了拦截器链ProducerInterceptors,则ProducerRecord会被拦截器链中每个
+         * ProducerInterceptor调用其onSend()方法进行处理,接着调用doSend()方法
+         */
         ProducerRecord<K, V> interceptedRecord = this.interceptors == null ? record : this.interceptors.onSend(record);
         return doSend(interceptedRecord, callback);
     }
@@ -584,8 +588,16 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
         TopicPartition tp = null;
         try {
             // first make sure the metadata for the topic is available
+            /**
+             * 1:获取元数据Metadata,通过调用waitOnMetadata()方法对Metadata进行获取
+             * 只有获取到Metadata元数据信息才能进行消息的投递
+             * 因此该方法会一直被阻塞尝试去获取Metadata,若超过max.block.ms时间后,依然没有获取到Metadata信息,则会抛出异常(若有定义拦截器 会拦截)
+             */
             long waitedOnMetadataMs = waitOnMetadata(record.topic(), this.maxBlockTimeMs);
             long remainingWaitMs = Math.max(0, this.maxBlockTimeMs - waitedOnMetadataMs);
+            /**
+             * 2:按照指定的序列化方式进行key,value的序列化
+             */
             byte[] serializedKey;
             try {
                 serializedKey = keySerializer.serialize(record.topic(), record.key());
