@@ -128,6 +128,8 @@ import org.slf4j.LoggerFactory;
  * 让总的重试时间比kafka集群从崩溃中恢复的时间长,否则生产者会过早的放弃重试
  * 不过有些错误不是临时性的,没办法通过重试来解决(比如"消息太大错误")
  * 一般情况下,因为生产者会自动进行重试,所有就没必要再代码逻辑里处理那些可重试的错误,只需处理那些不可重试的错误或重试次数超过上限的情况
+ * 默认值是0,即不重试
+ * kafka自带的客户端设置的发送失败重试次数是3次
  * <p>
  * 如果发送失败,会自动重发,可能会造成消息重复
  * If the request fails, the producer can automatically retry, though since we have specified <code>retries</code>
@@ -183,6 +185,17 @@ import org.slf4j.LoggerFactory;
  * 7:max.in.flight.requests.per.connection
  * 该参数指定了生产者在收到服务器响应之前可以发送多少个消息
  * 它的值越高,就会占用越多的内存，不过也会提高吞吐量,把他设置为1,可以保证消息是按照发送的顺序写入服务器的，即使发生了重试
+ * 8:max.request.size
+ * 该参数用于控制生产者发送的请求大小(最大的字节数),它可以指能发送的单个消息的最大值,也可以指单个请求里所有消息总的大小
+ * 另外,broker对可接受的消息的最大值也有自己的限制(message.max.byte)两边最好匹配防止消息被broker拒收
+ * 9:max.block.ms
+ * 该参数指定了在调用send()方法或使用partitionsFor()方法获取元数据是生产者的阻塞时间,当生产者的发送缓冲区已满,或者没有可用的元数据时
+ * 这些方法就会阻塞,在阻塞时间达到max.block.ms时生产者会抛出异常
+ * 10:timeout.ms  request.timeout.ms  metadata.fetch.timeout.ms
+ * request.timeout.ms指定了生产者在发送数据事等待服务器返回响应的时间
+ * metadata.fetch.timeout.ms指定了生产者在获取元数据时(比如目标分区的leader是谁)时等待服务器返回响应的时间,
+ * 如果等待超时那么生产者要么重新发送数据,要么返回一个错误(抛出异常或执行回调)
+ * timeout.ms 指定了broker等待同步副本返回消息确认的时间与asks配置相匹配--如果在指定时间内没有收到同步副本的确认,那么broker就会返回一个错误
  */
 public class KafkaProducer<K, V> implements Producer<K, V> {
 
@@ -255,6 +268,9 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
     }
 
     /**
+     * kafkaProducer在实例化时首先会加载和解析生产者相关的配置信息并封装成ProducerConfig对象
+     * 然后根据配置项主要完成以下对象或数据结构的实例化
+     * <p>
      * A producer is instantiated by providing a set of key-value pairs as configuration, a key and a value {@link Serializer}.
      * Valid configuration strings are documented <a href="http://kafka.apache.org/documentation.html#producerconfigs">here</a>.
      *
@@ -276,10 +292,16 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
             Map<String, Object> userProvidedConfigs = config.originals();
             this.producerConfig = config;
             this.time = new SystemTime();
-
+            /**
+             * 1:从配置项中解析出clientId，客户端指定该配置项的值以便追踪程序运行情况,在同一个进程内，当有多个KafkaProducer时
+             * 若没有配置client.id则clientId以前缀 "producer-"后加一个从1递增的整数
+             */
             clientId = config.getString(ProducerConfig.CLIENT_ID_CONFIG);
             if (clientId.length() <= 0)
                 clientId = "producer-" + PRODUCER_CLIENT_ID_SEQUENCE.getAndIncrement();
+            /**
+             * 2:根据配置项创建和主责用于KafkaMetrics指标收集的相关对象,用于对Kafka集群相关指标的追踪
+             */
             Map<String, String> metricTags = new LinkedHashMap<String, String>();
             metricTags.put("client-id", clientId);
             MetricConfig metricConfig = new MetricConfig().samples(config.getInt(ProducerConfig.METRICS_NUM_SAMPLES_CONFIG))
@@ -290,13 +312,28 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
             reporters.add(new JmxReporter(JMX_PREFIX));
             this.metrics = new Metrics(metricConfig, reporters, time);
             //通过反射机制实例化配置的Partitioner类,KeySerializer,ValueSerializer类
+            /**
+             * 实例化分区器
+             * 分区器用于指定分区,客户端可以通过实现Partitioner接口自定义分配分区的规则.若用户没有自定义分区器,则在KafkaProducer实例化时
+             * 会使用默认的DefaultPartitioner 该分区器分配分区的规则是:
+             * 若消息自定了key,则对key取hash值，然后与可用的分区总数求模
+             * 若没有指定key,则通过一个随机数与可用的总分区取模
+             */
             this.partitioner = config.getConfiguredInstance(ProducerConfig.PARTITIONER_CLASS_CONFIG, Partitioner.class);
+            /**
+             *
+             */
+            //获取retry.backoff.ms(默认是100ms)
             long retryBackoffMs = config.getLong(ProducerConfig.RETRY_BACKOFF_MS_CONFIG);
             //创建kafka集群的元数据
             this.metadata = new Metadata(retryBackoffMs, config.getLong(ProducerConfig.METADATA_MAX_AGE_CONFIG));
+            //获取max.request.size大小
             this.maxRequestSize = config.getInt(ProducerConfig.MAX_REQUEST_SIZE_CONFIG);
+            //获取buffer.memory大小
             this.totalMemorySize = config.getLong(ProducerConfig.BUFFER_MEMORY_CONFIG);
+            //消息压缩策略(默认none)
             this.compressionType = CompressionType.forName(config.getString(ProducerConfig.COMPRESSION_TYPE_CONFIG));
+            //检查用户配置,提示两个在0.9版本可能会移除的配置
             /* check for user defined settings.
              * If the BLOCK_ON_BUFFER_FULL is set to true,we do not honor METADATA_FETCH_TIMEOUT_CONFIG.
              * This should be removed with release 0.9 when the deprecated configs are removed.
@@ -321,7 +358,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
             } else {
                 this.maxBlockTimeMs = config.getLong(ProducerConfig.MAX_BLOCK_MS_CONFIG);
             }
-
+            //检查用户配置,提示两个在0.9版本可能会移除的配置
             /* check for user defined settings.
              * If the TIME_OUT config is set use that for request timeout.
              * This should be removed with release 0.9

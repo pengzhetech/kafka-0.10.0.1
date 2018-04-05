@@ -68,6 +68,9 @@ public final class RecordBatch {
     public long lastAppendTime;
     /**
      * Thunk对象的集合(可以理解为消息的回调对象队列)
+     * 为了保证Callback能被顺序执行,会将Callback顺序保存到list中
+     * 在底层实现时将Callback对象与每次发送消息返回的FutureRecordMetadata对象封装成一个Thunk对象,在RecordBatch维护一个THunk的列表
+     * 用于记录一批RecordBatch下每次发送的Record对应的Callback
      */
     private final List<Thunk> thunks;
     /**
