@@ -5,9 +5,9 @@
  * The ASF licenses this file to You under the Apache License, Version 2.0
  * (the "License"); you may not use this file except in compliance with
  * the License.  You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -17,6 +17,7 @@
 package org.apache.kafka.common.record;
 
 import java.lang.reflect.Constructor;
+
 import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.utils.Utils;
 
@@ -53,7 +54,7 @@ public class Compressor {
         @Override
         public Constructor get() throws ClassNotFoundException, NoSuchMethodException {
             return Class.forName("org.xerial.snappy.SnappyOutputStream")
-                .getConstructor(OutputStream.class, Integer.TYPE);
+                    .getConstructor(OutputStream.class, Integer.TYPE);
         }
     });
 
@@ -61,7 +62,7 @@ public class Compressor {
         @Override
         public Constructor get() throws ClassNotFoundException, NoSuchMethodException {
             return Class.forName("org.apache.kafka.common.record.KafkaLZ4BlockOutputStream")
-                .getConstructor(OutputStream.class);
+                    .getConstructor(OutputStream.class);
         }
     });
 
@@ -69,7 +70,7 @@ public class Compressor {
         @Override
         public Constructor get() throws ClassNotFoundException, NoSuchMethodException {
             return Class.forName("org.xerial.snappy.SnappyInputStream")
-                .getConstructor(InputStream.class);
+                    .getConstructor(InputStream.class);
         }
     });
 
@@ -77,12 +78,22 @@ public class Compressor {
         @Override
         public Constructor get() throws ClassNotFoundException, NoSuchMethodException {
             return Class.forName("org.apache.kafka.common.record.KafkaLZ4BlockInputStream")
-                .getConstructor(InputStream.class, Boolean.TYPE);
+                    .getConstructor(InputStream.class, Boolean.TYPE);
         }
     });
 
     private final CompressionType type;
+    /**
+     * 对bufferStream进行了了一层装饰,为其添加了压缩功能
+     * <p>
+     * appendStream---->bufferStream--->ByteBuffer
+     */
     private final DataOutputStream appendStream;
+    /**
+     * bufferStream是在buffer的基础上建立的ByteBufferOutputStream(kafka自己提供的实现)
+     * ByteBufferOutputStream继承了java.io.OutputStream,封装了ByteBuffer
+     * 当写入数据超出了ByteBuffer容量时,ByteBufferOutputStream会自动进行扩容
+     */
     private final ByteBufferOutputStream bufferStream;
     private final int initPos;
 
@@ -91,6 +102,12 @@ public class Compressor {
     public float compressionRate;
     public long maxTimestamp;
 
+    /**
+     * Compressor的压缩类型由"compression.type"配置参数指定,即KafkaProducer.compressionType字段的值
+     *
+     * @param buffer
+     * @param type   从KafkaProducer传递过来的压缩类型
+     */
     public Compressor(ByteBuffer buffer, CompressionType type) {
         this.type = type;
         this.initPos = buffer.position();
@@ -140,8 +157,8 @@ public class Compressor {
             buffer.putInt(initPos + Records.LOG_OVERHEAD + Record.KEY_OFFSET_V1, valueSize);
             // compute and fill the crc at the beginning of the message
             long crc = Record.computeChecksum(buffer,
-                initPos + Records.LOG_OVERHEAD + Record.MAGIC_OFFSET,
-                pos - initPos - Records.LOG_OVERHEAD - Record.MAGIC_OFFSET);
+                    initPos + Records.LOG_OVERHEAD + Record.MAGIC_OFFSET,
+                    pos - initPos - Records.LOG_OVERHEAD - Record.MAGIC_OFFSET);
             Utils.writeUnsignedInt(buffer, initPos + Records.LOG_OVERHEAD + Record.CRC_OFFSET, crc);
             // reset the position
             buffer.position(pos);
@@ -149,7 +166,7 @@ public class Compressor {
             // update the compression ratio
             this.compressionRate = (float) buffer.position() / this.writtenUncompressed;
             TYPE_TO_RATE[type.id] = TYPE_TO_RATE[type.id] * COMPRESSION_RATE_DAMPING_FACTOR +
-                compressionRate * (1 - COMPRESSION_RATE_DAMPING_FACTOR);
+                    compressionRate * (1 - COMPRESSION_RATE_DAMPING_FACTOR);
         }
     }
 
@@ -189,6 +206,16 @@ public class Compressor {
         }
     }
 
+    /**
+     * Compressor提供了一系列put方法,向appendStream流写入数据,
+     * Compressor.put*()方法---->appendStream---->bufferStream--->ByteBuffer
+     * 很明显,这是装饰器模式的典型
+     * 通过bufferStream的装饰,添加自动扩容的功能;通过appendStream的装饰后,添加压缩功能
+     *
+     * @param bytes
+     * @param offset
+     * @param len
+     */
     public void put(final byte[] bytes, final int offset, final int len) {
         try {
             appendStream.write(bytes, offset, len);
@@ -211,6 +238,7 @@ public class Compressor {
 
     /**
      * Put a record as uncompressed into the underlying stream
+     *
      * @return CRC of the record
      */
     public long putRecord(long timestamp, byte[] key, byte[] value) {
@@ -231,6 +259,13 @@ public class Compressor {
         return numRecords;
     }
 
+    /**
+     * 根据指定压缩方式的压缩率,写入的未压缩数据的字节数(writtenUncompressed字段记录)
+     * 估算因子(COMPRESSION_RATE_ESTIMATION_FACTOR字段),估计已写入的(压缩后的)字节数
+     * 此方法主要判断MemoryRecords是否写满的逻辑中使用
+     *
+     * @return
+     */
     public long estimatedBytesWritten() {
         if (type == CompressionType.NONE) {
             return bufferStream.buffer().position();
@@ -242,14 +277,26 @@ public class Compressor {
 
     // the following two functions also need to be public since they are used in MemoryRecords.iteration
 
+    /**
+     * 压缩流
+     *
+     * @param buffer
+     * @param type
+     * @param bufferSize
+     * @return
+     */
     public static DataOutputStream wrapForOutput(ByteBufferOutputStream buffer, CompressionType type, int bufferSize) {
         try {
+            //下面根据压缩类型创建合适的压缩流
             switch (type) {
+                //不同的压缩方式(目前仅支持4种压缩方式)
                 case NONE:
                     return new DataOutputStream(buffer);
                 case GZIP:
+                    //使用GZIP压缩方式(通过new方式创建对象) GZIPOutputStream是JDK自己实现
                     return new DataOutputStream(new GZIPOutputStream(buffer, bufferSize));
                 case SNAPPY:
+                    //使用SNAPPY压缩方式(通过反射方式创建对象) 不需要此依赖时候,可以移除
                     try {
                         OutputStream stream = (OutputStream) snappyOutputStreamSupplier.get().newInstance(buffer, bufferSize);
                         return new DataOutputStream(stream);
@@ -257,6 +304,7 @@ public class Compressor {
                         throw new KafkaException(e);
                     }
                 case LZ4:
+                    //使用LZ4压缩方式(通过反射方式创建)
                     try {
                         OutputStream stream = (OutputStream) lz4OutputStreamSupplier.get().newInstance(buffer);
                         return new DataOutputStream(stream);
@@ -264,6 +312,7 @@ public class Compressor {
                         throw new KafkaException(e);
                     }
                 default:
+                    //不支持的压缩方式,抛出异常
                     throw new IllegalArgumentException("Unknown compression type: " + type);
             }
         } catch (IOException e) {

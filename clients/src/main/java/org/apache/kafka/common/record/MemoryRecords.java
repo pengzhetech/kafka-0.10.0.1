@@ -3,9 +3,9 @@
  * file distributed with this work for additional information regarding copyright ownership. The ASF licenses this file
  * to You under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
  * License. You may obtain a copy of the License at
- * 
+ * <p>
  * http://www.apache.org/licenses/LICENSE-2.0
- * 
+ * <p>
  * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
  * an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
  * specific language governing permissions and limitations under the License.
@@ -24,27 +24,50 @@ import org.apache.kafka.common.utils.AbstractIterator;
 
 /**
  * A {@link Records} implementation backed by a ByteBuffer.
+ * MemoryRecords表示多少个消息的集合
+ * * 是生产者消息最终存放的地方
  */
 public class MemoryRecords implements Records {
 
     private final static int WRITE_LIMIT_FOR_READABLE_ONLY = -1;
 
     // the compressor used for appends-only
+    /**
+     * 压缩器,对消息数据进行压缩,将压缩后的数据输出到buffer
+     */
     private final Compressor compressor;
 
     // the write limit for writable buffer, which may be smaller than the buffer capacity
+    /**
+     * 记录buffer字段最多可以写入多少字节的数据
+     */
     private final int writeLimit;
 
     // the capacity of the initial buffer, which is only used for de-allocation of writable records
     private final int initialCapacity;
 
     // the underlying buffer used for read; while the records are still writable it is null
+    /**
+     * 用于保存消息数据的 java.nio.ByteBuffer
+     */
     private ByteBuffer buffer;
 
     // indicate if the memory records is writable or not (i.e. used for appends or read-only)
+    /**
+     * 此MemoryRecords对象是只读的模式,还是可写的模式.在MemoryRecords发送前,会将其设置成只读模式
+     */
     private boolean writable;
 
     // Construct a writable memory records
+
+    /**
+     * 构造方法私有(通过 emptyRecords方法获取对象)
+     *
+     * @param buffer
+     * @param type
+     * @param writable
+     * @param writeLimit
+     */
     private MemoryRecords(ByteBuffer buffer, CompressionType type, boolean writable, int writeLimit) {
         this.writable = writable;
         this.writeLimit = writeLimit;
@@ -73,6 +96,10 @@ public class MemoryRecords implements Records {
 
     /**
      * Append the given record and offset to the buffer
+     * /**
+     * * Append the given record and offset to the buffer
+     * * 先判断MemoryRecords是否为可写模式
+     * * 然后调用Compressor.put方法,将消息数据写入ByteBuffer中
      */
     public void append(long offset, Record record) {
         if (!writable)
@@ -88,6 +115,7 @@ public class MemoryRecords implements Records {
 
     /**
      * Append a new record and offset to the buffer
+     *
      * @return crc of the record
      */
     public long append(long offset, long timestamp, byte[] key, byte[] value) {
@@ -103,12 +131,15 @@ public class MemoryRecords implements Records {
     }
 
     /**
+     * 根据Compressor估算的已写字节数,估计MemoryRecords剩余空间是否足够写入指定的数据
+     * * 注意,这里仅仅是估算,不一定十分准确
+     * * 通过hasRoomFor方法判断之后写入数据,也可能导致底层ByteBuffer出现扩容的情况
      * Check if we have room for a new record containing the given key/value pair
-     *
+     * <p>
      * Note that the return value is based on the estimate of the bytes written to the compressor, which may not be
      * accurate if compression is really used. When this happens, the following append may cause dynamic buffer
      * re-allocation in the underlying byte buffer stream.
-     *
+     * <p>
      * There is an exceptional case when appending a single message whose size is larger than the batch size, the
      * capacity will be the message size which is larger than the write limit, i.e. the batch size. In this case
      * the checking should be based on the capacity of the initialized buffer rather than the write limit in order
@@ -119,8 +150,8 @@ public class MemoryRecords implements Records {
             return false;
 
         return this.compressor.numRecordsWritten() == 0 ?
-            this.initialCapacity >= Records.LOG_OVERHEAD + Record.recordSize(key, value) :
-            this.writeLimit >= this.compressor.estimatedBytesWritten() + Records.LOG_OVERHEAD + Record.recordSize(key, value);
+                this.initialCapacity >= Records.LOG_OVERHEAD + Record.recordSize(key, value) :
+                this.writeLimit >= this.compressor.estimatedBytesWritten() + Records.LOG_OVERHEAD + Record.recordSize(key, value);
     }
 
     public boolean isFull() {
@@ -129,7 +160,14 @@ public class MemoryRecords implements Records {
 
     /**
      * Close this batch for no more appends
+     * /**
+     * * Close this batch for no more appends
+     * * 出现ByteBuffer扩容的情况时,MemoryRecords.buffer与
+     * * ByteBufferOutputStream.buffer字段所指向的不再是同一个ByteBuffer对象
+     * * 在close方法中,会将MemoryRecords.buffer指向扩容后的ByteBuffer对象
+     * * 同时,将writable置为false(即只读模式)
      */
+
     public void close() {
         if (writable) {
             // close the compressor to fill-in wrapper message metadata if necessary
@@ -146,6 +184,10 @@ public class MemoryRecords implements Records {
 
     /**
      * The size of this record set
+     * /**
+     * * The size of this record set
+     * * 对于可写的MemoryRecords,返回的是ByteBufferOutputStream.buffer字段的大小
+     * * 对于只读的MemoryRecords,返回的是MemoryRecords.buffer的大小
      */
     public int sizeInBytes() {
         if (writable) {
@@ -183,6 +225,12 @@ public class MemoryRecords implements Records {
         return buffer.duplicate();
     }
 
+    /**
+     * 迭代器
+     * 用在Consumer端读取其中的消息(服务端 Log SubSystem)
+     *
+     * @return
+     */
     @Override
     public Iterator<LogEntry> iterator() {
         if (writable) {
@@ -193,7 +241,7 @@ public class MemoryRecords implements Records {
             return new RecordsIterator(this.buffer.duplicate(), false);
         }
     }
-    
+
     @Override
     public String toString() {
         Iterator<LogEntry> iter = iterator();
@@ -213,7 +261,9 @@ public class MemoryRecords implements Records {
         return builder.toString();
     }
 
-    /** Visible for testing */
+    /**
+     * Visible for testing
+     */
     public boolean isWritable() {
         return writable;
     }
@@ -254,8 +304,8 @@ public class MemoryRecords implements Records {
                     try {
                         LogEntry logEntry = getNextEntryFromStream();
                         Record recordWithTimestamp = new Record(logEntry.record().buffer(),
-                                                                wrapperRecordTimestamp,
-                                                                entry.record().timestampType());
+                                wrapperRecordTimestamp,
+                                entry.record().timestampType());
                         logEntries.add(new LogEntry(logEntry.offset(), recordWithTimestamp));
                     } catch (EOFException e) {
                         break;
@@ -273,7 +323,7 @@ public class MemoryRecords implements Records {
 
         /*
          * Read the next record from the buffer.
-         * 
+         *
          * Note that in the compressed message set, each message value size is set as the size of the un-compressed
          * version of the message value, so when we do de-compression allocating an array of the specified size for
          * reading compressed value data is sufficient.
