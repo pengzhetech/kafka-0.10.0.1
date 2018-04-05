@@ -14,13 +14,28 @@ package org.apache.kafka.common;
 
 /**
  * Information about a topic-partition.
+ * 表示一个分区的详细信息
  */
 public class PartitionInfo {
-
+    /**
+     * topic的名称
+     */
     private final String topic;
+    /**
+     * 表示此分区在Topic中的分区编号(ID)
+     */
     private final int partition;
+    /**
+     * 记录了Leader副本所在节点的id(即broker中server.properties中配置的id,0~255内部重复的数字)
+     */
     private final Node leader;
+    /**
+     * 记录了此分区全部副本所在的节点信息
+     */
     private final Node[] replicas;
+    /**
+     * 记录了此分区在ISR集合中所有副本所在的节点信息
+     */
     private final Node[] inSyncReplicas;
 
     public PartitionInfo(String topic, int partition, Node leader, Node[] replicas, Node[] inSyncReplicas) {
