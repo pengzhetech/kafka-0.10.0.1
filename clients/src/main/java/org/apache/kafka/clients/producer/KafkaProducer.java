@@ -380,7 +380,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
             }
             //创建RecordAccumulator
             /**
-             * 实例化用户存储消息的RecordAccumulator
+             * 5:实例化用户存储消息的RecordAccumulator
              * RecordAccumulator的作用类似于一个队列,这里成为消息累加器
              * KafkaProducer发送的消息都会被追加到消息累加器的一个双端队列Deque中
              * 在消息累加器的内部每个主题的每个分区TopicPartition对应一个双端队列
@@ -404,6 +404,13 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
              * //更新kafka集群的元数据
              */
             this.metadata.update(Cluster.bootstrap(addresses), time.milliseconds());
+            /**
+             * 6:根据指定的安全协议${security.protocol}创建一个ChannelBuilder
+             * kafka目前支持5中安全协议 PLAINTEXT SSL SASL_PLAINTEXT SASL_SSL TRACE
+             * 然后创建NetworkClient实例,这个对象的底层是通过Socket(实质上是JAVA NIO)来进行TCP通信的
+             *用于生产者与broker进行Socket通信,由NetworkClient对象构造一个用于数据发送的Sender实例sender线程
+             * 最后通过sender创建一个KafkaThread线程,启动该线程，该线程是一个守护线程,在后台不断轮询,将消息发送至broker
+             */
             ChannelBuilder channelBuilder = ClientUtils.createChannelBuilder(config.values());
             //创建NetworkClient,这是KafkaProducer的网络I/O核心,
             NetworkClient client = new NetworkClient(
@@ -433,7 +440,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
 
             this.errors = this.metrics.sensor("errors");
             /**
-             * 4:实例化消息key和value进行序列化操作的Serializer
+             * 7:实例化消息key和value进行序列化操作的Serializer
              * Kafka实现了7中基本类型的Serializer,如BytesSerializer,LongSerializer
              * 用户也可以自定义序列化方式(kafka推荐使用Avro)，默认key和value使用ByteArraySerializer
              */
@@ -457,7 +464,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
             // load interceptors and make sure they get clientId
             userProvidedConfigs.put(ProducerConfig.CLIENT_ID_CONFIG, clientId);
             /**
-             * 5:根据配置实例化一组拦截器(ProducerInterceptor),用户可以指定多个拦截器
+             * 8:根据配置实例化一组拦截器(ProducerInterceptor),用户可以指定多个拦截器
              * 如果我们希望在消息发送前，消息发送到broker并ack,，消息还未到达broker而失败或调用send()方法失败这几种情景下进行相应处理
              * 就可以通过自定义拦截器实现该接口中相应的方法.多个拦截器会被顺序执行
              */
