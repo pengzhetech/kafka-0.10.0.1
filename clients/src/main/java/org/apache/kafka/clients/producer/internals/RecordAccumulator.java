@@ -195,9 +195,9 @@ public final class RecordAccumulator {
      * 有可能出现:线程1发送的消息比较大,需要向BufferPool申请新空间,而此时BufferPool空间不足,线程1在BufferPool上等待,而他此时任然持有对应Deque的锁
      * 线程2发送的消息较小,Deque最后一个RecordBatch剩余空间足够,但是由于线程1未释放Deque的锁,所以也需要一起等待
      * 若线程2这样的线程较多就会造成很多不必要的线程阻塞降低了吞吐量 这里体现了"减少锁的持有时间"
-     *
+     * <p>
      * 第二次加锁重试后 是为了防止多个线程并发想BufferPool申请空间后,造成内部碎片
-     *
+     * <p>
      * <p>
      * <p>
      * Add a record to the accumulator, return the append result
@@ -377,6 +377,12 @@ public final class RecordAccumulator {
      * </ol>
      */
     public ReadyCheckResult ready(Cluster cluster, long nowMs) {
+        /**
+         * 1:创建一个Set<Node>类型的readyNodes集合,该集合保存TopicPartition分区对应的Leader节点信息
+         * 定义一个用于记录下次执行延迟等待时间的nextReadyCheckDelayMs变量 默认值是Long.MAX_VALUE
+         * 根据BufferPool中维护的Deque<Condition>类型的双端队列waiters长度是否大于0来设置标志位exhausted的值
+         * 该值用来标识是否将Leader节点添加到readyNodes集合 waiters是用来记录在申请分配空间时由于可分配内存不足而进行条件阻塞的Contition
+         */
         //用来记录可以向哪些Node节点发送消息
         Set<Node> readyNodes = new HashSet<>();
         //记录下次需要调用ready()方法的时间间隔
@@ -386,6 +392,31 @@ public final class RecordAccumulator {
         //是否有线程在阻塞等待BufferPool释放空间
         boolean exhausted = this.free.queued() > 0;
         //下面遍历batches,对其中每个分区的Leader副本所在的Node都进行判断
+        /**
+         * 2:遍历RecordAccumulator对象的batches 就batches中保存的每个分区TopicPartition对象以及该分区对应的双端队列deque分别进行如下处理
+         * a):从Cluster元数据信息中查找该分区的leader副本对应的节点 如果leader副本节点不存在 说明该主题对应的metadata还未被加载
+         * 将unknownLeadersExist = true
+         * b):如果readyNodes集合中找不到该分区Leader副本锁对应的节点,同时muted集合中也找不到该分区,则调至c进行处理,否则结束对该分区的处理,继续取batches中保存的下一个分区进行处理
+         * c):从deque头部取出第一个RecordBatch 若第一个RecordBatch为空 则返回继续迭代 否则根据规则判断当前分区的leader副本对应的节点是否需要保存到readyNodes集合中
+         * 如果不需要保存到readyNodes集合中 则设置nextReadyCheckDelayMs的值 否则将Leader副本对应节点保存到readyNodes集合中 返回继续迭代batches中的元素
+         *
+         * 这里讲规则定义如下(一下规则输出均为boolean型 同时在这里约定下文描述规则成立即表示规则输出为true)
+         *
+         *  规则一:判断RecordBatch是否被提交发送过,若满足提交重试次数attempts大于0 同时上次重试时间lastAttemptMs与重试间隔retryBackoffMs（即配置型${retry.backoff.ms}）
+         * 大于当前时nowMs，则表示该RecordBatch已经被提交 标识字段backingOff的值标识该规则成立与否
+         *
+         * 规则二:deque队列长度大于1或是RecordBatch已满 用标志位full接受该规则输出
+         *
+         * 规则三:若规则一满足即backingOff=true 则设置变量timeToWaitMs为${retry.backoff.ms} 否则timeToWaitMs为${linger.mx}
+         *
+         * 根据以上规则来确定是否需要将Leader副本对应的节点保存到readyNodes集合中 若规则一不成立即标识当前RecordBatch没有被提交过
+         * 那么readyNodes集合中肯定还有该Leader节点 则在判断以下表达式是否成立
+         *    boolean sendable = full || expired || exhausted || closed || flushInProgress();
+         *    若该表达式也成立 则将Leader添加到readyNodes集合中 其中标志位closed默认值为false close字段用于标识kafkaProducer是否已关闭
+         *    在KafkaProducer中调用close()方法进行关闭操作时 RecordAccumulator执行close操作会将标志为close设置为true
+         *    flushInprogress()方法当有线程正在等待进行flush操作时返回true 否则设置nextReadyCheckDelayMs值
+         *    取timeToWaitMs与waitedTimeMs之差大于0之中较大者 然后继续迭代
+         */
         for (Map.Entry<TopicPartition, Deque<RecordBatch>> entry : this.batches.entrySet()) {
             TopicPartition part = entry.getKey();
             Deque<RecordBatch> deque = entry.getValue();
@@ -420,7 +451,10 @@ public final class RecordAccumulator {
                 }
             }
         }
-
+        /**
+         * 3:待batches中元素遍历完毕 将前面几步得到的readyNodes nextReadyCheckDelayMs unknownLeadersExist构造成一个
+         * ReadyCheckResult对象返回
+         */
         return new ReadyCheckResult(readyNodes, nextReadyCheckDelayMs, unknownLeadersExist);
     }
 
@@ -662,8 +696,17 @@ public final class RecordAccumulator {
      * The set of nodes that have at least one complete record batch in the accumulator
      */
     public final static class ReadyCheckResult {
+        /**
+         * 记录分区的Leader节点
+         */
         public final Set<Node> readyNodes;
+        /**
+         * 记录下次执行需要等待的时间
+         */
         public final long nextReadyCheckDelayMs;
+        /**
+         * 是否有没有找到Leader的分区
+         */
         public final boolean unknownLeadersExist;
 
         public ReadyCheckResult(Set<Node> readyNodes, long nextReadyCheckDelayMs, boolean unknownLeadersExist) {

@@ -53,6 +53,17 @@ import org.slf4j.LoggerFactory;
 /**
  * The background thread that handles the sending of produce requests to the Kafka cluster. This thread makes metadata
  * requests to renew its view of the cluster and then sends produce requests to the appropriate nodes.
+ * Sender将消息发送发送Kafka主要依赖:KafkaClient RecordAccumulator Metadata
+ * 基本流程:首先从Metadata中获取集群元数据信息,然后从RecordAccumulator中取出以满足发送条件的RecordBatch,并构造相关网络层请求
+ * 交由Network去执行 在这个过程中需要取出每个TopicPartition所对应的的分区Leader,有可能某个TopicPartition的Leader不存在
+ * 则会触发请求Metadata更新操作.在发送过程中NetworkClient内部维护了一个InFlightRequests类型的inFlightRequests对象用于保存
+ * 已发送但是还没收到响应的请求,在这个流程当中Sender很向一个任务调度器,而NetworkClient是网络请求的真正执行者
+ * Sender不断的从RecordAccumulator取出数据构造请求交由NetworkClient去执行
+ * <p>
+ * 首先根据RecordAccumulator的缓存情况 筛选出可以向哪些节点发送消息(即RecordAccumulator.ready()方法)
+ * 然后根据生产者与各个节点的连接情况(由NetworkClient管理)过滤node节点
+ * 之后 生成相应的请求 这里需要特别注意: 每个Node节点只生成一个请求
+ * 最后调用NetworkClient将请求发送出去
  */
 public class Sender implements Runnable {
 
@@ -67,6 +78,9 @@ public class Sender implements Runnable {
     /* the metadata for the client */
     private final Metadata metadata;
 
+    /**
+     * 是否需要保证消息顺序的标志
+     */
     /* the flag indicating whether the producer should guarantee the message order on the broker or not. */
     private final boolean guaranteeMessageOrder;
 
@@ -127,7 +141,9 @@ public class Sender implements Runnable {
      */
     public void run() {
         log.debug("Starting Kafka producer I/O thread.");
-
+        /**
+         * KafkaProducer没有close之前,会一直运行
+         */
         // main loop, runs until close is called
         while (running) {
             try {
@@ -169,15 +185,30 @@ public class Sender implements Runnable {
      * @param now The current POSIX time in milliseconds
      */
     void run(long now) {
+        /**
+         * 1:从metadata中获取Cluster元数据信息
+         */
         Cluster cluster = metadata.fetch();
         // get the list of partitions with data ready to send
+        /**
+         * 2:获取各TopicPartition分区的Leader节点集合
+         */
         RecordAccumulator.ReadyCheckResult result = this.accumulator.ready(cluster, now);
 
         // if there are any partitions whose leaders are not known yet, force metadata update
+        /**
+         * 3:根据第2步返回的结果ReadyCheckResult对象,进行以下处理
+         * 若unknownLeadersExist为true即存在没有找到Leader的分区,则调用metadata.requestUpdate()请求更新元数据
+         */
         if (result.unknownLeadersExist)
             this.metadata.requestUpdate();
 
         // remove any nodes we aren't ready to send to
+        /**
+         * 4:检测ReadyCheckResult.readyNodes集合中节点连接状态,通过调用NetworkClient.ready()方法来完成检测工作,
+         * 该方法除检测连接状态之外,同时根据一定条件决定是否为还未建立连接的节点创建连接.若与某个节点的连接还未就绪则将该节点从readyNodes中移除
+         * 经过NetworkClient.ready()方法处理之后,readyNodes集合中的所有节点均已与NetworkClient建立了连接
+         */
         Iterator<Node> iter = result.readyNodes.iterator();
         long notReadyTimeout = Long.MAX_VALUE;
         while (iter.hasNext()) {
@@ -189,10 +220,26 @@ public class Sender implements Runnable {
         }
 
         // create produce requests
+        /**
+         * 5:根据readyNodes中各节点Node的id进行分组,每个node对应一个List<RecordBatch>集合，先取出同一个Leader下的所有分区
+         * 然后按序取出每个分区对应的双端队列deque,,从deque头部取出第一个RecordBatch，计算该RecordBatch的字节总数并累加到局部变量size中
+         * 若size的值不大于${max.request.size}的值 则将该RecordBatch添加到对应Node的ready集合中，或者size的值大于${max.request.size}
+         * 但此时ready为kong,表示这是第一个且超过请求设置的最大阈值的RecordBatch,依然将该RecordBatch添加到ready集合中准备发送
+         * 如果某个RecordBatch满足添加到与之对应的ready集合的条件,在添加之前需要将该RecordBatch关闭 保证该RecordBatch不在接收新的Record写入
+         * 如果不满足将其添加到与之关联的ready集合的条件,则该节点的所有分区本次构造发送请求提前结束 继续迭代下一个节点进行同样的处理
+         * 经过第5步的处理 为readyNodes集合中保存的各节点构造了一个Map<Integer，List<RecordBatch>>类型的集合batches
+         * 该map对象以节点id为key,以该节点为leader节点的所有或部分分区对应双端队列的第一个RecordBatch构成的List集合座位Value
+         */
         Map<Integer, List<RecordBatch>> batches = this.accumulator.drain(cluster,
                 result.readyNodes,
                 this.maxRequestSize,
                 now);
+        /**
+         *6:如果要保证消息发送有序,则对第5步处理得到的Map取其values进行二重迭代
+         * 对每个RecordBatch，调用accumulator.mutePartition()进行处理
+         * 该方法会将每个RecordBatch的TopicPartition添加到一个HashSet类型的muted集合中,其实质是提取所有的RecordBatch的TopicPartition
+         * 根据set特性对该TopicPartition去重
+         */
         if (guaranteeMessageOrder) {
             // Mute all the partitions drained
             for (List<RecordBatch> batchList : batches.values()) {
@@ -200,13 +247,21 @@ public class Sender implements Runnable {
                     this.accumulator.mutePartition(batch.topicPartition);
             }
         }
-
+        /**
+         * 7:根据配置项${request.timeout.ms}的值,该配置项默认是30s 过滤掉请求已经超时的RecordBatch
+         * 若已超时则将该RecordBatch添加到过期集合list中 并将该RecordBatch从双端队列中移除 同时释放内存空间
+         * 然后将过期的RecordBatch交由SenderMetrics进行处理 更新和记录相应的metrics信息
+         */
         List<RecordBatch> expiredBatches = this.accumulator.abortExpiredBatches(this.requestTimeout, now);
         // update sensors
         for (RecordBatch expiredBatch : expiredBatches)
             this.sensors.recordErrors(expiredBatch.topicPartition.topic(), expiredBatch.recordCount);
 
         sensors.updateProduceRequestMetrics(batches);
+        /**
+         * 8:遍历第5步得到的batches， 根据batches分组的Node 将每个Node转化为一个ClientRequest对象
+         * 最终将batches转化为List<ClientRequest>集合
+         */
         List<ClientRequest> requests = createProduceRequests(batches, now);
         // If we have any nodes that are ready to send + have sendable data, poll with 0 timeout so this can immediately
         // loop and try sending more data. Otherwise, the timeout is determined by nodes that have partitions with data
@@ -218,6 +273,16 @@ public class Sender implements Runnable {
             log.trace("Created {} produce requests: {}", requests.size(), requests);
             pollTimeout = 0;
         }
+        /**
+         * 9:遍历第8步得到的List<ClientRequest>集合
+         * 首先调用NetworkClient的send()方法执行网络层消息传输,向相应broker发送请求,在send()方法中首先将ClientRequest添加到
+         * InFlightRequests队列中 该队列记录了一系列正在被发送或是已发送但是还未收到相应的ClientRequest 然后调用Selector.send(Send send)
+         * 方法 但此时数据并没有真正发送出去 只是暂存在Selector内部对应的KafkaChannel里面.
+         * 在Selector内部维护了一个Map<String，KafkaChannel>类型的channels 即每个Node对应一个KafkaChannel
+         *
+         * 一个KafkaChannel一次只能存放一个Send数据包 在当前的Send数据包没有完整的发出去之前,不能存放下一个Send 否则抛出异常
+         *
+         */
         for (ClientRequest request : requests)
             client.send(request, now);
 
@@ -225,6 +290,11 @@ public class Sender implements Runnable {
         // otherwise if some partition already has some data accumulated but not ready yet,
         // the select time will be the time difference between now and its linger expiry time;
         // otherwise the select time will be the time difference between now and the metadata expiry time;
+        /**
+         * 10:调用NetworkClient的poll方法真正进行读写操作
+         * 该方法首先调用MetadataUpdate.maybeUpdate方法检查是否需要更新元数据信息,然后调用Selector.poll方法真正执行网络I/)操作
+         * 最后对已经完成的请求对其相应结果response进行处理
+         */
         this.client.poll(pollTimeout, now);
     }
 
