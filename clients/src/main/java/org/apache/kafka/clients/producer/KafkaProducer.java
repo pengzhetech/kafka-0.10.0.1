@@ -627,7 +627,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
             int serializedSize = Records.LOG_OVERHEAD + Record.recordSize(serializedKey, serializedValue);
             ensureValidRecordSize(serializedSize);
             /**
-             * 5:创建TopicPartition对象,根据ProducerRecord对应的topic及partitionId,创建一个TopicPartition对象
+             * 5:创建TopicPartition对象,根据ProduceRecord对应的topic及partitionId,创建一个TopicPartition对象
              * 在RecordAccumulator中会为每一个TopicPartition创建一个双端队列Deque
              */
             tp = new TopicPartition(record.topic(), partition);
@@ -688,7 +688,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
     /**
      * Wait for cluster metadata including partitions for the given topic to be available.
      * 此方法负责触发Kafka集群元数据的更新,并阻塞主线程等待更新完毕,它的主要步骤:
-     * * 1):检测Metadata中是否包含制动Topic的元数据,若不包含
+     * * 1):检测Metadata中是否包含指定Topic的元数据,若不包含
      * * 则将topic添加到topics集合中,下次更新时会从服务端获取指定topic的元数据
      * * 2):尝试获取Topic中分区的详细信息,失败后会调用requestUpdate()方法这只MetaData.needUpdate字段,并得到当前元数据版本号
      * * 3):唤醒Sender线程,由Sender线程更新MetaData中保存的Kafka集群元数据
@@ -710,6 +710,9 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
 
         long begin = time.milliseconds();
         long remainingWaitMs = maxWaitMs;
+        /**
+         * 如果没有获取到指定topic的元数据信息会一直循环等待
+         */
         while (metadata.fetch().partitionsForTopic(topic) == null) {
             log.trace("Requesting metadata update for topic {}.", topic);
             //设置needUpdate,获取当前元数据的版本号
@@ -903,11 +906,14 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
      * calls configured partitioner class to compute the partition.
      */
     private int partition(ProducerRecord<K, V> record, byte[] serializedKey, byte[] serializedValue, Cluster cluster) {
+        //消息指定分区
         Integer partition = record.partition();
         if (partition != null) {
+            //根据topic名称获取PartitionInfo
             List<PartitionInfo> partitions = cluster.partitionsForTopic(record.topic());
             int lastPartition = partitions.size() - 1;
             // they have given us a partition, use it
+            //判断给定的分区是否合理(分区是从0开始编号)
             if (partition < 0 || partition > lastPartition) {
                 throw new IllegalArgumentException(String.format("Invalid partition given with record: %d is not in the range [0...%d].", partition, lastPartition));
             }

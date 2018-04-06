@@ -221,12 +221,17 @@ public final class RecordAccumulator {
         // We keep track of the number of appending thread to make sure we do not miss batches in
         // abortIncompleteBatches().
         //统计正在向RecordAccumulator中追加数据的线程数
+        /**
+         * 计数器为为了追踪正在进行的追加操作的线程数 以便当客户端在调用KafkaProducer.close()方法强制关闭发送消息操作时
+         * sender调用消息累加器的abortIncompleteBatches()方法 放弃未处理完的请求 释放资源
+         */
         appendsInProgress.incrementAndGet();
         try {
             // check if we have an in-progress batch
             //步骤1:查找TopicPartition对应的Deque
             Deque<RecordBatch> dq = getOrCreateDeque(tp);
-            synchronized (dq) {//步骤2:对Deque对象枷锁
+            synchronized (dq) {//步骤2:对Deque对象加锁(保证了相同TopicPartition的append操作只能顺序执行
+                // 当有一个线程正在进行append操作时 与之相同的TopicPartition的客户端就不能进行append操作 必须等待 这样就能保证写入同一个分区的数据在BufferPool是有序写入的)
                 //边界检查
                 if (closed)
                     throw new IllegalStateException("Cannot send after the producer is closed.");

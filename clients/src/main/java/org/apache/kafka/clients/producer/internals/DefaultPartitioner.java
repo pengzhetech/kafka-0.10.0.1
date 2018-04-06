@@ -88,6 +88,7 @@ public class DefaultPartitioner implements Partitioner {
                 int part = DefaultPartitioner.toPositive(nextValue) % availablePartitions.size();
                 return availablePartitions.get(part).partition();
             } else {
+                //无分区可用
                 // no partitions are available, give a non-available partition
                 return DefaultPartitioner.toPositive(nextValue) % numPartitions;
             }

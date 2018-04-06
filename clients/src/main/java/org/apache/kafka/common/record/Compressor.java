@@ -103,6 +103,9 @@ public class Compressor {
     private final int initPos;
 
     public long writtenUncompressed;
+    /**
+     * 写入的消息数量
+     */
     public long numRecords;
     public float compressionRate;
     public long maxTimestamp;
