@@ -165,6 +165,7 @@ public final class Metadata {
      * Wait for metadata update until the current version is larger than the last version we know of
      * /**
      * * Wait for metadata update until the current version is larger than the last version we know of
+     * 主线程用
      * * 通过version字段的的版本号来判断元数据是否更新完成,更新未完成则阻塞等待
      */
     public synchronized void awaitUpdate(final int lastVersion, final long maxWaitMs) throws InterruptedException {
