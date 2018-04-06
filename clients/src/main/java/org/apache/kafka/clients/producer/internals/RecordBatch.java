@@ -187,6 +187,8 @@ public final class RecordBatch {
     }
 
     /**
+     * 调用done方法 并抛出TimeoutException
+     * 标识整个RecordBatch中的消息过期
      * A batch whose metadata is not available should be expired if one of the following is true:
      * <ol>
      * <li> the batch is not in retry AND request timeout has elapsed after it is ready (full or linger.ms has reached).

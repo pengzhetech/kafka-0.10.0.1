@@ -49,6 +49,7 @@ import org.apache.kafka.common.utils.Time;
  * * 使每个MemoryRecords可以缓存多条消息,就不会复用BufferPool中缓存的ByteBuffer
  * * 而是额外分配ByteBuffer,在它被使用完后也不会方法BufferPool进行管理
  * * 而是直接丢弃由GC回收
+ * 如果出现这种例外情况,就需要考虑调整batchsizez的大小了
  */
 public final class BufferPool {
 

@@ -54,6 +54,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * <p>
  * The accumulator uses a bounded amount of memory and append calls will block when that memory is exhausted, unless
  * this behavior is explicitly disabled.
+ * RecordAccumulator至少有一个业务线程即主线程和Sender线程并发操作,必须是线程安全的
  */
 public final class RecordAccumulator {
 
@@ -79,12 +80,13 @@ public final class RecordAccumulator {
     private final long lingerMs;
     private final long retryBackoffMs;
     /**
-     * 实现ByteBuffer复用的对象
+     * 用于存放消息的 实现ByteBuffer复用的缓存数据结构对象
      */
     private final BufferPool free;
     private final Time time;
     /**
-     * 保存了TopicPartition与RecordBatch队列的映射关系,类型是ConcurrentMap,是线程安全的集合,但其中的Deque是ArrayDeque型,是线程不安全的集合
+     * 保存了TopicPartition与RecordBatch队列的映射关系,类型是ConcurrentMap,是线程安全的集合,
+     * 但其中的Deque是ArrayDeque型,是线程不安全的集合
      * 追加新消息或发送RecordBatch时,需要加锁同步
      * 每个Deque中都保存了发往对应TopicPartition的RecordBatch集合
      */
@@ -186,6 +188,17 @@ public final class RecordAccumulator {
      * * 10:将新建的RecordBatch追加到incomplete集合
      * * 11:synchronized块结束,自动解锁
      * * 12:返回RecordAppendResult,RecordAppendResult会中的字段为作为唤醒Sender线程的条件
+     * <p>
+     * 第2步和第6步对Deque加synchronized锁然后重试的原因,这里的Deque使用的事ArrayDeque(非线程安全) 所以需要加锁同步
+     * 为什么分多个synchronized块而不一个完成的synchronized块中完成呢?
+     * 主要是因为在想BufferPool申请新ByteBuffer的时候,可能会导致阻塞,假设在一个synchronized完成所有追加操作
+     * 有可能出现:线程1发送的消息比较大,需要向BufferPool申请新空间,而此时BufferPool空间不足,线程1在BufferPool上等待,而他此时任然持有对应Deque的锁
+     * 线程2发送的消息较小,Deque最后一个RecordBatch剩余空间足够,但是由于线程1未释放Deque的锁,所以也需要一起等待
+     * 若线程2这样的线程较多就会造成很多不必要的线程阻塞降低了吞吐量 这里体现了"减少锁的持有时间"
+     *
+     * 第二次加锁重试后 是为了防止多个线程并发想BufferPool申请空间后,造成内部碎片
+     *
+     * <p>
      * <p>
      * Add a record to the accumulator, return the append result
      * <p>

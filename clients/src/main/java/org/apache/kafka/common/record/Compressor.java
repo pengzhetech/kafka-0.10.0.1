@@ -30,6 +30,11 @@ import java.nio.ByteBuffer;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
+/**
+ * Compressor提供了一系列的put.*方法,向appendStream写入数据流 这是典型的装饰模式
+ * * 通过bufferStream装饰,实现了自动扩容功能
+ * * 通过appendStream装饰,添加压缩供功能
+ */
 public class Compressor {
 
     static private final float COMPRESSION_RATE_DAMPING_FACTOR = 0.9f;

@@ -642,6 +642,9 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
              * 7:写入BufferPool操作,调用append()方法将ProducerRecord写入RecordAccumulator的BufferPool中
              */
             RecordAccumulator.RecordAppendResult result = accumulator.append(tp, timestamp, serializedKey, serializedValue, interceptCallback, remainingWaitMs);
+            /**
+             * 唤醒Sender线程的条件是消息所在队列的最后一个RecordBatch满了或此队列中不只一个RecordBatch
+             */
             if (result.batchIsFull || result.newBatchCreated) {
                 log.trace("Waking up the sender since topic {} partition {} is either full or getting a new batch", record.topic(), partition);
                 this.sender.wakeup();
