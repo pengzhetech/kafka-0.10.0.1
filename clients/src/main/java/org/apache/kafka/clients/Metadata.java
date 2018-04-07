@@ -217,6 +217,7 @@ public final class Metadata {
     }
 
     /**
+     * Sender线程操作
      * Update the cluster metadata
      */
     public synchronized void update(Cluster cluster, long now) {
@@ -230,7 +231,7 @@ public final class Metadata {
 
         // Do this after notifying listeners as subscribed topics' list can be changed by listeners
         this.cluster = this.needMetadataForAllTopics ? getClusterForCurrentTopics(cluster) : cluster;
-
+        //唤醒所有阻塞在Producer wait()上的线程(此时元数据已更新完成)
         notifyAll();
         log.debug("Updated cluster metadata version {} to {}", this.version, this.cluster);
     }

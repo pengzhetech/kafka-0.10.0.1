@@ -27,7 +27,7 @@ import org.apache.kafka.common.utils.AbstractIterator;
  * MemoryRecords表示多少个消息的集合
  * * 是生产者消息最终存放的地方
  */
-public class MemoryRecords implements Records {
+public class /**/MemoryRecords implements Records {
 
     private final static int WRITE_LIMIT_FOR_READABLE_ONLY = -1;
 

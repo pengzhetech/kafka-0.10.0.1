@@ -27,8 +27,10 @@ public class NetworkReceive implements Receive {
     public final static int UNLIMITED = -1;
 
     private final String source;
+    //头部4字节的buffer
     private final ByteBuffer size;
     private final int maxSize;
+    //后面整个消息response的buffer
     private ByteBuffer buffer;
 
 
@@ -41,6 +43,7 @@ public class NetworkReceive implements Receive {
 
     public NetworkReceive(String source) {
         this.source = source;
+        //先分配4字节的头部
         this.size = ByteBuffer.allocate(4);
         this.buffer = null;
         this.maxSize = UNLIMITED;
