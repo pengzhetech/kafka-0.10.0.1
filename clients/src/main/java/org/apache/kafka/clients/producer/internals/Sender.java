@@ -70,12 +70,21 @@ public class Sender implements Runnable {
     private static final Logger log = LoggerFactory.getLogger(Sender.class);
 
     /* the state of each nodes connection */
+    /**
+     * kafka网络客户端
+     */
     private final KafkaClient client;
 
     /* the record accumulator that batches records */
+    /**
+     * 消息累加器
+     */
     private final RecordAccumulator accumulator;
 
     /* the metadata for the client */
+    /**
+     * 元数据
+     */
     private final Metadata metadata;
 
     /**
@@ -85,6 +94,9 @@ public class Sender implements Runnable {
     private final boolean guaranteeMessageOrder;
 
     /* the maximum request size to attempt to send to the server */
+    /**
+     * 发送到broker的消息最大大小
+     */
     private final int maxRequestSize;
 
     /* the number of acknowledgements to request from the server */
@@ -158,6 +170,9 @@ public class Sender implements Runnable {
         // okay we stopped accepting requests but there may still be
         // requests in the accumulator or waiting for acknowledgment,
         // wait until these are completed.
+        /**
+         * KafkaProducer已经close 但没有forceClose会将accumulator中还未发送出去的消息接着发送出去
+         */
         while (!forceClose && (this.accumulator.hasUnsent() || this.client.inFlightRequestCount() > 0)) {
             try {
                 run(time.milliseconds());
@@ -165,6 +180,7 @@ public class Sender implements Runnable {
                 log.error("Uncaught error in kafka producer I/O thread: ", e);
             }
         }
+        //强制关闭客户端 剩下的消息也直接抛弃
         if (forceClose) {
             // We need to fail all the incomplete batches and wake up the threads waiting on
             // the futures.
@@ -224,11 +240,11 @@ public class Sender implements Runnable {
          * 5:根据readyNodes中各节点Node的id进行分组,每个node对应一个List<RecordBatch>集合，先取出同一个Leader下的所有分区
          * 然后按序取出每个分区对应的双端队列deque,,从deque头部取出第一个RecordBatch，计算该RecordBatch的字节总数并累加到局部变量size中
          * 若size的值不大于${max.request.size}的值 则将该RecordBatch添加到对应Node的ready集合中，或者size的值大于${max.request.size}
-         * 但此时ready为kong,表示这是第一个且超过请求设置的最大阈值的RecordBatch,依然将该RecordBatch添加到ready集合中准备发送
+         * 但此时ready为空,表示这是第一个且超过请求设置的最大阈值的RecordBatch,依然将该RecordBatch添加到ready集合中准备发送
          * 如果某个RecordBatch满足添加到与之对应的ready集合的条件,在添加之前需要将该RecordBatch关闭 保证该RecordBatch不在接收新的Record写入
          * 如果不满足将其添加到与之关联的ready集合的条件,则该节点的所有分区本次构造发送请求提前结束 继续迭代下一个节点进行同样的处理
          * 经过第5步的处理 为readyNodes集合中保存的各节点构造了一个Map<Integer，List<RecordBatch>>类型的集合batches
-         * 该map对象以节点id为key,以该节点为leader节点的所有或部分分区对应双端队列的第一个RecordBatch构成的List集合座位Value
+         * 该map对象以节点id为key,以该节点为leader节点的所有或部分分区对应双端队列的第一个RecordBatch构成的List集合作为Value
          */
         Map<Integer, List<RecordBatch>> batches = this.accumulator.drain(cluster,
                 result.readyNodes,

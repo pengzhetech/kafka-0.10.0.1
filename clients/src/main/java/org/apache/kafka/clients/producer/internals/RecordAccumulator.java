@@ -98,7 +98,7 @@ public final class RecordAccumulator {
     // The following variables are only accessed by the sender thread, so we don't need to protect them.
     /**
      * 未发送完成的RecordBatch集合
-     * 消息已发送但还未收到broker的ack的TopicPartition
+     * 已发送出去 但是没有收到响应
      */
     private final Set<TopicPartition> muted;
     /**
@@ -487,9 +487,9 @@ public final class RecordAccumulator {
      * * 而在调用KafkaProducer的上层业务逻辑,则是按照TopicPartition的方式生产数据,
      * * 它只关心发送到哪个TopicPartition,而不关心这些TopicPartition在哪个Node几点上
      * * <p>
-     * * Sender线程每次型每个Node节点之多发送一个ClientRequest请求,其中封装了追加到此Node节点上多个分区的消息
+     * * Sender线程每次想每个Node节点至多发送一个ClientRequest请求,其中封装了追加到此Node节点上多个分区的消息
      * * 待请求到达服务端以后,由kafka服务端对其进行解析
-     * Drain all the data for the given nodes and collate them into a list of batches that will fit within the specified
+     * Drain all the data for the given nodes and collate(核对) them into a list of batches that will fit within the specified
      * size on a per-node basis. This method attempts to avoid choosing the same topic-node over and over.
      *
      * @param cluster The current cluster metadata
@@ -512,7 +512,7 @@ public final class RecordAccumulator {
             //获取当前Node上的分区集合
             List<PartitionInfo> parts = cluster.partitionsForNode(node.id());
             List<RecordBatch> ready = new ArrayList<>();
-            /* to make starvation less likely this loop doesn't start at 0 */
+            /* to make starvation(饥饿) less likely this loop doesn't start at 0 */
             /**
              * 记录要发送的RecordBatch
              * drainIndex是batches的下标,记录上次发送停止时的位置,下次继续从此位置开始发送,如果一直从索引0的队列开始发送
@@ -524,6 +524,7 @@ public final class RecordAccumulator {
                 PartitionInfo part = parts.get(drainIndex);
                 TopicPartition tp = new TopicPartition(part.topic(), part.partition());
                 // Only proceed if the partition has no in-flight batches.
+                //当这个TopicPartition中已经有发出去但是还没有收到response的消息时
                 if (!muted.contains(tp)) {
                     //获取对应的RecordBatch队列
                     Deque<RecordBatch> deque = getDeque(new TopicPartition(part.topic(), part.partition()));
@@ -535,6 +536,7 @@ public final class RecordAccumulator {
                                 boolean backoff = first.attempts > 0 && first.lastAttemptMs + retryBackoffMs > now;
                                 // Only drain the batch if it is not during backoff period.
                                 if (!backoff) {
+                                    //一个消息的请求比maxSize还大 这种情况很少 这个消息单独做一个request
                                     if (size + first.records.sizeInBytes() > maxSize && !ready.isEmpty()) {
                                         // there is a rare case that a single batch size is larger than the request size due
                                         // to compression; in this case we will still eventually send this batch in a single
