@@ -30,7 +30,7 @@ public interface KafkaClient extends Closeable {
      * aren't.
      *
      * @param node The node to check
-     * @param now The current timestamp
+     * @param now  The current timestamp
      */
     public boolean isReady(Node node, long now);
 
@@ -39,7 +39,7 @@ public interface KafkaClient extends Closeable {
      * node will change only when poll is invoked.
      *
      * @param node The node to connect to.
-     * @param now The current time
+     * @param now  The current time
      * @return true iff we are ready to immediately initiate the sending of another request to the given node.
      */
     public boolean ready(Node node, long now);
@@ -50,7 +50,7 @@ public interface KafkaClient extends Closeable {
      * connections.
      *
      * @param node The node to check
-     * @param now The current timestamp
+     * @param now  The current timestamp
      * @return The number of milliseconds to wait.
      */
     public long connectionDelay(Node node, long now);
@@ -69,17 +69,18 @@ public interface KafkaClient extends Closeable {
      * Queue up the given request for sending. Requests can only be sent on ready connections.
      *
      * @param request The request
-     * @param now The current timestamp
+     * @param now     The current timestamp
      */
     public void send(ClientRequest request, long now);
 
     /**
      * Do actual reads and writes from sockets.
+     * 真正执行网络I/O
      *
      * @param timeout The maximum amount of time to wait for responses in ms, must be non-negative. The implementation
      *                is free to use a lower value if appropriate (common reasons for this are a lower request or
      *                metadata update timeout)
-     * @param now The current time in ms
+     * @param now     The current time in ms
      * @throws IllegalStateException If a request is sent to an unready node
      */
     public List<ClientResponse> poll(long timeout, long now);
@@ -123,7 +124,7 @@ public interface KafkaClient extends Closeable {
     /**
      * Generate a request header for the given API key
      *
-     * @param key The api key
+     * @param key     The api key
      * @param version The api version
      * @return A request header with the appropriate client id and correlation id
      */

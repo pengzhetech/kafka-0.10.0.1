@@ -74,6 +74,8 @@ import org.slf4j.LoggerFactory;
  * various getters. These are reset by each call to <code>poll()</code>.
  * <p>
  * This class is not thread safe!
+ * <p>
+ * 对NIO Selector的封装 称为KSelector
  */
 public class Selector implements Selectable {
 
