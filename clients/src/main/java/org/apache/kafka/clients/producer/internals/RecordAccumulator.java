@@ -487,7 +487,7 @@ public final class RecordAccumulator {
      * * 而在调用KafkaProducer的上层业务逻辑,则是按照TopicPartition的方式生产数据,
      * * 它只关心发送到哪个TopicPartition,而不关心这些TopicPartition在哪个Node几点上
      * * <p>
-     * * Sender线程每次想每个Node节点至多发送一个ClientRequest请求,其中封装了追加到此Node节点上多个分区的消息
+     * * Sender线程每次向每个Node节点至多发送一个ClientRequest请求,其中封装了追加到此Node节点上多个分区的消息
      * * 待请求到达服务端以后,由kafka服务端对其进行解析
      * Drain all the data for the given nodes and collate(核对) them into a list of batches that will fit within the specified
      * size on a per-node basis. This method attempts to avoid choosing the same topic-node over and over.
@@ -536,7 +536,7 @@ public final class RecordAccumulator {
                                 boolean backoff = first.attempts > 0 && first.lastAttemptMs + retryBackoffMs > now;
                                 // Only drain the batch if it is not during backoff period.
                                 if (!backoff) {
-                                    //一个消息的请求比maxSize还大 这种情况很少 这个消息单独做一个request
+                                    //一个batch消息的请求比maxSize还大 这种情况很少 这个batch单独做一个request
                                     if (size + first.records.sizeInBytes() > maxSize && !ready.isEmpty()) {
                                         // there is a rare case that a single batch size is larger than the request size due
                                         // to compression; in this case we will still eventually send this batch in a single

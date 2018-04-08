@@ -115,6 +115,8 @@ public class /**/MemoryRecords implements Records {
 
     /**
      * Append a new record and offset to the buffer
+     * <p>
+     * 将一个新消息&此消息在RecordBatch中偏移量添加到buffer中
      *
      * @return crc of the record
      */

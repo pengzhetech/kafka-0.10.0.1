@@ -101,7 +101,9 @@ public class Compressor {
      */
     private final ByteBufferOutputStream bufferStream;
     private final int initPos;
-
+    /**
+     * 为压缩字节的长度
+     */
     public long writtenUncompressed;
     /**
      * 写入的消息数量
