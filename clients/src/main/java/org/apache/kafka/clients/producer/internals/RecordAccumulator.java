@@ -401,7 +401,7 @@ public final class RecordAccumulator {
          * 2:遍历RecordAccumulator对象的batches 就batches中保存的每个分区TopicPartition对象以及该分区对应的双端队列deque分别进行如下处理
          * a):从Cluster元数据信息中查找该分区的leader副本对应的节点 如果leader副本节点不存在 说明该主题对应的metadata还未被加载
          * 将unknownLeadersExist = true
-         * b):如果readyNodes集合中找不到该分区Leader副本锁对应的节点,同时muted集合中也找不到该分区,则调至c进行处理,否则结束对该分区的处理,继续取batches中保存的下一个分区进行处理
+         * b):如果readyNodes集合中找不到该分区Leader副本所对应的节点,同时muted集合中也找不到该分区,则调至c进行处理,否则结束对该分区的处理,继续取batches中保存的下一个分区进行处理
          * c):从deque头部取出第一个RecordBatch 若第一个RecordBatch为空 则返回继续迭代 否则根据规则判断当前分区的leader副本对应的节点是否需要保存到readyNodes集合中
          * 如果不需要保存到readyNodes集合中 则设置nextReadyCheckDelayMs的值 否则将Leader副本对应节点保存到readyNodes集合中 返回继续迭代batches中的元素
          *
