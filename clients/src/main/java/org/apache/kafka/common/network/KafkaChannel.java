@@ -178,6 +178,7 @@ public class KafkaChannel {
          * 判断发送send是否完成是通过ByteBuffer中是否还有剩余字节来判断的
          */
         if (send.completed())
+            //发送完成后一定需要取消写事件,不然每次select时都会select出写事件(NIO水平触发)
             transportLayer.removeInterestOps(SelectionKey.OP_WRITE);
 
         return send.completed();
