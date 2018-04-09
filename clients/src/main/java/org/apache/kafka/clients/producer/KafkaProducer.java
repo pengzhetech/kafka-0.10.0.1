@@ -209,7 +209,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
     private final Partitioner partitioner;
     //消息的最大长度,这个长度包含了消息头,序列化后的key,和序列化后的value的长度
     private final int maxRequestSize;
-    private final long totalMemorySize; //发送单个消息的缓冲区大小
+    private final long totalMemorySize; //发送单个消息的缓冲区大小(及配置的buffer.memory)
     private final Metadata metadata;  //整个kafka集群的元数据
     private final RecordAccumulator accumulator; //用于收集并缓存消息,等待Sender线程发送
     private final Sender sender; //发送消息的Sender任务,实现了Runnable接口,在ioThread的线程中执行
@@ -222,8 +222,8 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
     private final Serializer<K> keySerializer; //key的序列化器
     private final Serializer<V> valueSerializer; //value的序列化器
     private final ProducerConfig producerConfig;  //配置对象,使用反射初始化KafkaProducer配置的相关对象
-    private final long maxBlockTimeMs;//等待更新kafka集群元数据的最大时长
-    private final int requestTimeoutMs; //消息的超时时间,也就是从消息发送到收到ACK相应的最长时长
+    private final long maxBlockTimeMs;//等待更新kafka集群元数据的最大时长(及配置的max.block.ms)
+    private final int requestTimeoutMs; //消息的超时时间,也就是从消息发送到收到ACK相应的最长时长(即配置的request.timeout.ms)
     //ProducerInterceptors集合,ProducerInterceptor可以在消息发送之前对消息进行拦截或修改,
     // 也可优先于用户的Callback,对ACK相应进行预处理
     private final ProducerInterceptors<K, V> interceptors;
