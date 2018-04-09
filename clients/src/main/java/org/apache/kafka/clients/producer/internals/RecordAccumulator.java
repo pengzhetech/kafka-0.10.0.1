@@ -436,6 +436,7 @@ public final class RecordAccumulator {
                     RecordBatch batch = deque.peekFirst();
                     if (batch != null) {
                         //通过计算得到下面5个条件
+                        //消息没有重发且上次上次发送的时间+避退时间大于当前时间
                         boolean backingOff = batch.attempts > 0 && batch.lastAttemptMs + retryBackoffMs > nowMs;
                         long waitedTimeMs = nowMs - batch.lastAttemptMs;
                         long timeToWaitMs = backingOff ? retryBackoffMs : lingerMs;

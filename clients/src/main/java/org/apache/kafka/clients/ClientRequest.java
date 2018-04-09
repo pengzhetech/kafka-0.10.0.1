@@ -26,6 +26,12 @@ public final class ClientRequest {
     private final boolean isInitiatedByNetworkClient;
     private long sendTimeMs;
 
+    public static void main(String[] args) {
+        char a = '1';
+        char b = 1;
+        System.out.println(a==b);
+    }
+
     /**
      * @param createdTimeMs The unix timestamp in milliseconds for the time at which this request was created.
      * @param expectResponse Should we expect a response message or is this request complete once it is sent?

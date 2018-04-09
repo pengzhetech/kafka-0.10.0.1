@@ -52,7 +52,7 @@ public final class Cluster {
      */
     private final Map<String, List<PartitionInfo>> availablePartitionsByTopic;
     /**
-     * 记录了Node与Partitio˜nInfo之间的映射关系,可以按照节点的id查询其上分布的全部分区的详细信息
+     * 记录了Node与PartitionInfo之间的映射关系,可以按照节点的id查询其上分布的全部分区的详细信息
      */
     private final Map<Integer, List<PartitionInfo>> partitionsByNode;
     /**
