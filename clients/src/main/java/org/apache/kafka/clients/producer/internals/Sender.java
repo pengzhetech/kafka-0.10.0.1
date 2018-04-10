@@ -196,6 +196,15 @@ public class Sender implements Runnable {
     }
 
     /**
+     * 1:从Metadata获取Kafka集群元数据
+     * 2:调用RecordAccumulator.ready()方法根据RecordAccumulator缓存情况 选出可以向哪些Node节点发送信息 返回ReadyCheckResult对象
+     * 3:如果ReadyCheckReault中有标识unknownLeadersExits 则调用Metadata的requestUpdate方法 标记需要更新kafka进群信息
+     * 4:针对ReadyCheckResult中readyNodes集合 循环调用NetwotkClient.ready方法 目的是检查网络I/O方面是否符合发送消息的条件 不符合的条件的Node将会从readyNodes集合中删除
+     * 5:针对经过步骤4处理后的readyNodes集合 调用RecordAccumulator.drain()方法 获取待发送的消息集合
+     * 6:调用RecordAccumulator.abortExpireBatches()方法处理RecordAccumulator中超时的消息 其代码逻辑是 遍历RecordAccumulator中保存的全部RecordBatch 调用RecordBatch.maybeExpire方法进行处理 如果已超时 则调用RecordBatch.done方法 其中会触发自定义Callback 并将RecordBatch从队列中移除 释放ByteBuffer空间
+     * 7:调用Sender.createProducerRecord()方法将待发送的消息封装成ClientRequest
+     * 8:调用NetworkClient.send方法将ClientRequest写入KafkaChannel中的send字段
+     * 9:调用NetworkClient.poll方法将KafkaChannel字段中的保存的ClientRequest发送出去 同时还会处理服务端的响应 处理超时的请求 调用用户自定义的Callback等
      * Run a single iteration of sending
      *
      * @param now The current POSIX time in milliseconds
