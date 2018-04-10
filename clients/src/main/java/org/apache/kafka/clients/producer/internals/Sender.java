@@ -216,6 +216,7 @@ public class Sender implements Runnable {
         Cluster cluster = metadata.fetch();
         // get the list of partitions with data ready to send
         /**
+         * 从RecordAccumulator角度检测是否ready
          * 2:获取各TopicPartition分区的Leader节点集合
          */
         RecordAccumulator.ReadyCheckResult result = this.accumulator.ready(cluster, now);
@@ -230,6 +231,8 @@ public class Sender implements Runnable {
 
         // remove any nodes we aren't ready to send to
         /**
+         *  从网络角度检测是否ready(没有ready的节点移除)
+         *
          * 4:检测ReadyCheckResult.readyNodes集合中节点连接状态,通过调用NetworkClient.ready()方法来完成检测工作,
          * 该方法除检测连接状态之外,同时根据一定条件决定是否为还未建立连接的节点创建连接.若与某个节点的连接还未就绪则将该节点从readyNodes中移除
          * 经过NetworkClient.ready()方法处理之后,readyNodes集合中的所有节点均已与NetworkClient建立了连接
