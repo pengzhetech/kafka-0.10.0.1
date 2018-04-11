@@ -443,6 +443,13 @@ public final class RecordAccumulator {
                         long timeLeftMs = Math.max(timeToWaitMs - waitedTimeMs, 0);
                         boolean full = deque.size() > 1 || batch.records.isFull();//条件一
                         boolean expired = waitedTimeMs >= timeToWaitMs;//条件二 exhausted条件三  flushInProgress条件四  closed条件五
+                        /**
+                         *  1):Deque中有多个RecordBatch或是第一个RecordBatch已经满了
+                         *  2):是否超时了(超过linger.ms)
+                         *  3):是否有其他线程在等待BufferPool释放空间(即BufferPool的空间耗尽了)
+                         *  4):是否有线程正在等待flush操作完成
+                         *  5):Sender线程准备关闭
+                         */
                         boolean sendable = full || expired || exhausted || closed || flushInProgress();
                         if (sendable && !backingOff) {
                             readyNodes.add(leader);

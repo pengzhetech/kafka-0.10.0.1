@@ -103,15 +103,27 @@ public class Sender implements Runnable {
     private final short acks;
 
     /* the number of times to retry a failed request before giving up */
+    /**
+     * 消息发送失败的重试次数
+     */
     private final int retries;
 
     /* the clock instance used for getting the time */
+    /**
+     * 当前系统时钟
+     */
     private final Time time;
 
     /* true while the sender thread is still running */
+    /**
+     * Sender线程是否在运行
+     */
     private volatile boolean running;
 
     /* true when the caller wants to ignore all unsent/inflight messages and force close.  */
+    /**
+     * 强制关闭标识
+     */
     private volatile boolean forceClose;
 
     /* metrics */
@@ -121,6 +133,9 @@ public class Sender implements Runnable {
     private String clientId;
 
     /* the max time to wait for the server to respond to the request*/
+    /**
+     * 等待服务端响应的最大等待超时事件
+     */
     private final int requestTimeout;
 
     public Sender(KafkaClient client,
