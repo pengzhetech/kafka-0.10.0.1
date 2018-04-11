@@ -17,27 +17,29 @@ import java.io.Closeable;
 import java.util.Map;
 
 /**
- *
  * @param <T> Type to be serialized from.
- *
- * A class that implements this interface is expected to have a constructor with no parameter.
- *
- *
+ *            <p>
+ *            A class that implements this interface is expected to have a constructor with no parameter.
+ *            <p>
+ *            AVRO序列化方式
  */
 public interface Serializer<T> extends Closeable {
 
-    /**在执行序列化操作之前的配置
-     *
+    /**
+     * 在执行序列化操作之前的配置
+     * <p>
      * Configure this class.
+     *
      * @param configs configs in key/value pairs
-     * @param isKey whether is for key or value
+     * @param isKey   whether is for key or value
      */
     public void configure(Map<String, ?> configs, boolean isKey);
 
     /**
      * 真正序列化成字节数组
+     *
      * @param topic topic associated with data
-     * @param data typed data
+     * @param data  typed data
      * @return serialized bytes
      */
     public byte[] serialize(String topic, T data);

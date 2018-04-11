@@ -5,9 +5,9 @@
  * The ASF licenses this file to You under the Apache License, Version 2.0
  * (the "License"); you may not use this file except in compliance with
  * the License.  You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -19,11 +19,12 @@ package org.apache.kafka.common.network;
 
 /*
  * Transport layer for underlying communication.
- * At very basic level it is wrapper around SocketChannel and can be used as substitute for SocketChannel
+ * At very basic level it is wrapper around SocketChannel and can be used as substitute(替代平) for SocketChannel
  * and other network Channel implementations.
  * As NetworkClient replaces BlockingChannel and other implementations we will be using KafkaChannel as
  * a network I/O channel.
  */
+
 import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.channels.SocketChannel;
@@ -65,7 +66,7 @@ public interface TransportLayer extends ScatteringByteChannel, GatheringByteChan
      * Performs SSL handshake hence is a no-op for the non-secure
      * implementation
      * @throws IOException
-    */
+     */
     void handshake() throws IOException;
 
     /**
