@@ -209,7 +209,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
     private final Partitioner partitioner;
     //消息的最大长度,这个长度包含了消息头,序列化后的key,和序列化后的value的长度
     private final int maxRequestSize;
-    private final long totalMemorySize; //发送单个消息的缓冲区大小(及配置的buffer.memory)
+    private final long totalMemorySize; //发送单个消息的缓冲区大小(即配置的buffer.memory)
     private final Metadata metadata;  //整个kafka集群的元数据
     private final RecordAccumulator accumulator; //用于收集并缓存消息,等待Sender线程发送
     private final Sender sender; //发送消息的Sender任务,实现了Runnable接口,在ioThread的线程中执行
@@ -381,7 +381,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
             //创建RecordAccumulator
             /**
              * 5:实例化用户存储消息的RecordAccumulator
-             * RecordAccumulator的作用类似于一个队列,这里成为消息累加器
+             * RecordAccumulator的作用类似于一个队列,这里称为消息累加器
              * KafkaProducer发送的消息都会被追加到消息累加器的一个双端队列Deque中
              * 在消息累加器的内部每个主题的每个分区TopicPartition对应一个双端队列
              * 队列中的元素是RecordBatch，RecordBatch是由同一个主题发往同一个分区的多条消息Record组成

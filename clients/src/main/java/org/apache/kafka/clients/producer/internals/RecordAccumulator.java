@@ -191,12 +191,12 @@ public final class RecordAccumulator {
      * <p>
      * 第2步和第6步对Deque加synchronized锁然后重试的原因,这里的Deque使用的事ArrayDeque(非线程安全) 所以需要加锁同步
      * 为什么分多个synchronized块而不一个完成的synchronized块中完成呢?
-     * 主要是因为在想BufferPool申请新ByteBuffer的时候,可能会导致阻塞,假设在一个synchronized完成所有追加操作
+     * 主要是因为在向BufferPool申请新ByteBuffer的时候,可能会导致阻塞,假设在一个synchronized完成所有追加操作
      * 有可能出现:线程1发送的消息比较大,需要向BufferPool申请新空间,而此时BufferPool空间不足,线程1在BufferPool上等待,而他此时任然持有对应Deque的锁
      * 线程2发送的消息较小,Deque最后一个RecordBatch剩余空间足够,但是由于线程1未释放Deque的锁,所以也需要一起等待
      * 若线程2这样的线程较多就会造成很多不必要的线程阻塞降低了吞吐量 这里体现了"减少锁的持有时间"
      * <p>
-     * 第二次加锁重试后 是为了防止多个线程并发想BufferPool申请空间后,造成内部碎片
+     * 第二次加锁重试后 是为了防止多个线程并发向BufferPool申请空间后,造成内部碎片
      * <p>
      * <p>
      * <p>
