@@ -3,9 +3,9 @@
  * file distributed with this work for additional information regarding copyright ownership. The ASF licenses this file
  * to You under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
  * License. You may obtain a copy of the License at
- * 
+ * <p>
  * http://www.apache.org/licenses/LICENSE-2.0
- * 
+ * <p>
  * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
  * an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
  * specific language governing permissions and limitations under the License.
@@ -13,14 +13,29 @@
 package org.apache.kafka.clients.consumer.internals;
 
 /**
+ * 心跳任务辅助类
  * A helper class for managing the heartbeat to the coordinator
  */
 public final class Heartbeat {
+    /**
+     * 过期时间
+     */
     private final long timeout;
+    /**
+     * 两次发送心跳消息的间隔
+     */
     private final long interval;
-
+    /**
+     * 最近发送心跳的时间
+     */
     private long lastHeartbeatSend;
+    /**
+     * 最后收到心跳响应的时间
+     */
     private long lastHeartbeatReceive;
+    /**
+     * 心跳任务重置时间
+     */
     private long lastSessionReset;
 
     public Heartbeat(long timeout,
@@ -45,11 +60,17 @@ public final class Heartbeat {
     public boolean shouldHeartbeat(long now) {
         return timeToNextHeartbeat(now) == 0;
     }
-    
+
     public long lastHeartbeatSend() {
         return this.lastHeartbeatSend;
     }
 
+    /**
+     * 计算下次发送心跳的时间
+     *
+     * @param now
+     * @return
+     */
     public long timeToNextHeartbeat(long now) {
         long timeSinceLastHeartbeat = now - Math.max(lastHeartbeatSend, lastSessionReset);
 
@@ -59,6 +80,12 @@ public final class Heartbeat {
             return interval - timeSinceLastHeartbeat;
     }
 
+    /**
+     * 检测是否过期
+     *
+     * @param now
+     * @return
+     */
     public boolean sessionTimeoutExpired(long now) {
         return now - Math.max(lastSessionReset, lastHeartbeatReceive) > timeout;
     }

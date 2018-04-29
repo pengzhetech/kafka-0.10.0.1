@@ -3,9 +3,9 @@
  * file distributed with this work for additional information regarding copyright ownership. The ASF licenses this file
  * to You under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
  * License. You may obtain a copy of the License at
- *
+ * <p>
  * http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
  * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
  * an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
  * specific language governing permissions and limitations under the License.
@@ -57,23 +57,60 @@ import java.util.Map;
 import java.util.Set;
 
 /**
+ * 在KafkaConsumer中通过ConsumerCoordinator组件与服务端的GroupCoordinator的交互
+ * <p>
  * This class manages the coordination process with the consumer coordinator.
  */
 public final class ConsumerCoordinator extends AbstractCoordinator {
 
     private static final Logger log = LoggerFactory.getLogger(ConsumerCoordinator.class);
-
+    /**
+     * PartitionAssignor列表
+     * 在消费者发送的JoinGroupRequest请求中包含了消费者支持的PartitionAssignor信息
+     * GroupCoordinator从所有消费者都支持的分配策略中选择一个,通知Leader使用此分配策略进行分区分配
+     * 此字段通过partition.assignment.strategy参数配置,可以配置多个
+     */
     private final List<PartitionAssignor> assignors;
     private final Metadata metadata;
     private final ConsumerCoordinatorMetrics sensors;
+    /**
+     * SubscriptionState对象
+     */
     private final SubscriptionState subscriptions;
     private final OffsetCommitCallback defaultOffsetCommitCallback;
+    /**
+     * 是否开启了自动提交
+     */
     private final boolean autoCommitEnabled;
+    /**
+     * 自动提交的定时任务
+     */
     private final AutoCommitTask autoCommitTask;
+    /**
+     * ConsumerInterceptor集合
+     */
     private final ConsumerInterceptors<?, ?> interceptors;
+    /**
+     * 标识是否排除内部Topic
+     */
     private final boolean excludeInternalTopics;
-
+    /**
+     * 用来存储Metadata的快照信息,主要是用来检测Topic是否发生了分区数量的变化
+     * 在ConsumerCoordinator的构造方法中,会为Metadata添加一个监听器,当Metadata更新时会做下面几件事
+     * -->如果是AUTO_PATTERN模式,则使用用户自定义的正则表达式过滤Topic,
+     * 得到需要订阅的Topic集合后,设置到SubscriptionState的subscription集合和groupSubscription集合中
+     * -->如果是AUTO_PATTERN或AUTO_TOPICS模式,为当前Metadata做一个快照,这个快照底层是使用HashMap
+     * 记录每个Topic中的Partition个数,将新旧快照进行比较,发生变化的话,则表示消费者订阅的Topic发生分区数量变化
+     * 则将SubscriptionState的needsPartitionAssignment置位true,需要重新进行分区分配
+     * -->使用metadataSnapshot字段记录变化后的快照
+     */
     private MetadataSnapshot metadataSnapshot;
+    /**
+     * 用来存储Metadata的快照信息,不过是用来检测Partition分配的过程中有没有发生分区数量变化
+     * 具体是在Leader消费者开始分区分配操作前,使用此字段记录Metadata快照
+     * 收到SyncGroupResponse后,会比较次字段记录的快照与当前Metadata是否发生变化,如果发生变化
+     * 则要重新进行分区分配
+     */
     private MetadataSnapshot assignmentSnapshot;
 
     /**
@@ -146,9 +183,9 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
         this.metadata.addListener(new Metadata.Listener() {
             @Override
             public void onMetadataUpdate(Cluster cluster) {
-
+                //AUTO_PATTERN模式
                 if (subscriptions.hasPatternSubscription()) {
-
+                    //权限认证
                     Set<String> unauthorizedTopics = new HashSet<String>();
                     for (String topic : cluster.unauthorizedTopics()) {
                         if (filterTopic(topic))
@@ -160,20 +197,26 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
                     final List<String> topicsToSubscribe = new ArrayList<>();
 
                     for (String topic : cluster.topics())
+                        //通过subscribedPattern匹配Topic
                         if (filterTopic(topic))
                             topicsToSubscribe.add(topic);
-
+                    //更新subscription groupSubscription assignment集合
                     subscriptions.changeSubscription(topicsToSubscribe);
+                    //更新Metadata需要记录元数据的Topic集合
                     metadata.setTopics(subscriptions.groupSubscription());
                 } else if (!cluster.unauthorizedTopics().isEmpty()) {
                     throw new TopicAuthorizationException(new HashSet<>(cluster.unauthorizedTopics()));
                 }
-
+                //检测是否是AUTO_PATTERN或者AUTO_TOPICS模式
                 // check if there are any changes to the metadata which should trigger a rebalance
                 if (subscriptions.partitionsAutoAssigned()) {
+                    //创建快照
                     MetadataSnapshot snapshot = new MetadataSnapshot(subscriptions, cluster);
+                    //比较快照
                     if (!snapshot.equals(metadataSnapshot)) {
+                        //记录快照
                         metadataSnapshot = snapshot;
+                        //更新needsPartitionAssignment字段委托true,表示需要重新进行分区分配
                         subscriptions.needReassignment();
                     }
                 }
@@ -328,6 +371,7 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
 
     /**
      * Fetch the current committed offsets from the coordinator for a set of partitions.
+     *
      * @param partitions The partitions to fetch offsets for
      * @return A map from partition to the committed offset
      */
@@ -410,10 +454,11 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
     /**
      * Commit offsets synchronously. This method will retry until the commit completes successfully
      * or an unrecoverable error is encountered.
+     *
      * @param offsets The offsets to be committed
      * @throws org.apache.kafka.common.errors.AuthorizationException if the consumer is not authorized to the group
-     *             or to any of the specified partitions
-     * @throws CommitFailedException if an unrecoverable error occurs before the commit can be completed
+     *                                                               or to any of the specified partitions
+     * @throws CommitFailedException                                 if an unrecoverable error occurs before the commit can be completed
      */
     public void commitOffsetsSync(Map<TopicPartition, OffsetAndMetadata> offsets) {
         if (offsets.isEmpty())
@@ -697,24 +742,24 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
 
             this.commitLatency = metrics.sensor("commit-latency");
             this.commitLatency.add(metrics.metricName("commit-latency-avg",
-                this.metricGrpName,
-                "The average time taken for a commit request"), new Avg());
+                    this.metricGrpName,
+                    "The average time taken for a commit request"), new Avg());
             this.commitLatency.add(metrics.metricName("commit-latency-max",
-                this.metricGrpName,
-                "The max time taken for a commit request"), new Max());
+                    this.metricGrpName,
+                    "The max time taken for a commit request"), new Max());
             this.commitLatency.add(metrics.metricName("commit-rate",
-                this.metricGrpName,
-                "The number of commit calls per second"), new Rate(new Count()));
+                    this.metricGrpName,
+                    "The number of commit calls per second"), new Rate(new Count()));
 
             Measurable numParts =
-                new Measurable() {
-                    public double measure(MetricConfig config, long now) {
-                        return subscriptions.assignedPartitions().size();
-                    }
-                };
+                    new Measurable() {
+                        public double measure(MetricConfig config, long now) {
+                            return subscriptions.assignedPartitions().size();
+                        }
+                    };
             metrics.addMetric(metrics.metricName("assigned-partitions",
-                this.metricGrpName,
-                "The number of partitions currently assigned to this consumer"), numParts);
+                    this.metricGrpName,
+                    "The number of partitions currently assigned to this consumer"), numParts);
         }
     }
 
