@@ -3,9 +3,9 @@
  * file distributed with this work for additional information regarding copyright ownership. The ASF licenses this file
  * to You under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
  * License. You may obtain a copy of the License at
- *
+ * <p>
  * http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
  * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
  * an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
  * specific language governing permissions and limitations under the License.
@@ -75,13 +75,15 @@ import org.apache.kafka.common.TopicPartition;
 public interface ConsumerRebalanceListener {
 
     /**
+     * 调用是Consumer停止拉去数据后,Rebalance开始之前,我们可以在此方法中实现手动提交Offset,这就避免了Rebalance
+     * 导致的重复消费
      * A callback method the user can implement to provide handling of offset commits to a customized store on the start
      * of a rebalance operation. This method will be called before a rebalance operation starts and after the consumer
      * stops fetching data. It is recommended that offsets should be committed in this callback to either Kafka or a
      * custom offset store to prevent duplicate data.
      * <p>
      * For examples on usage of this API, see Usage Examples section of {@link KafkaConsumer KafkaConsumer}
-     * <p>
+     *
      * <b>NOTE:</b> This method is only called before rebalances. It is not called prior to {@link KafkaConsumer#close()}.
      *
      * @param partitions The list of partitions that were assigned to the consumer on the last rebalance
@@ -89,6 +91,7 @@ public interface ConsumerRebalanceListener {
     public void onPartitionsRevoked(Collection<TopicPartition> partitions);
 
     /**
+     * 此方法的调用时机是Rebalance完成之后 ,Consumer开始拉取消息消息之前,我们可以在此方法中调整或自定义Offset的值(seek方法)
      * A callback method the user can implement to provide handling of customized offsets on completion of a successful
      * partition re-assignment. This method will be called after an offset re-assignment completes and before the
      * consumer starts fetching data.
@@ -98,7 +101,7 @@ public interface ConsumerRebalanceListener {
      * {@link #onPartitionsAssigned(Collection)} callback.
      *
      * @param partitions The list of partitions that are now assigned to the consumer (may include partitions previously
-     *            assigned to the consumer)
+     *                   assigned to the consumer)
      */
     public void onPartitionsAssigned(Collection<TopicPartition> partitions);
 }
