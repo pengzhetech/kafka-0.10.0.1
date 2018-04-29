@@ -33,9 +33,10 @@ public abstract class AbstractPartitionAssignor implements PartitionAssignor {
 
     /**
      * Perform the group assignment given the partition counts and member subscriptions
+     *
      * @param partitionsPerTopic The number of partitions for each subscribed topic. Topics not in metadata will be excluded
      *                           from this map.
-     * @param subscriptions Map from the memberId to their respective topic subscription
+     * @param subscriptions      Map from the memberId to their respective topic subscription
      * @return Map from each member to the list of partitions assigned to them.
      */
     public abstract Map<String, List<TopicPartition>> assign(Map<String, Integer> partitionsPerTopic,
@@ -46,10 +47,19 @@ public abstract class AbstractPartitionAssignor implements PartitionAssignor {
         return new Subscription(new ArrayList<>(topics));
     }
 
+    /**
+     * AbstractPartitionAssignor为了简化PartitionAssignor接口的实现,对assign方法进行了实现
+     * 其中会将Subscription中的userData去除掉后,在进行分区分配
+     *
+     * @param metadata      Current topic/broker metadata known by consumer
+     * @param subscriptions Subscriptions from all members provided through {@link #subscription(Set)}
+     * @return
+     */
     @Override
     public Map<String, Assignment> assign(Cluster metadata, Map<String, Subscription> subscriptions) {
         Set<String> allSubscribedTopics = new HashSet<>();
         Map<String, List<String>> topicSubscriptions = new HashMap<>();
+        //解析subscriptions集合,去除userData信息
         for (Map.Entry<String, Subscription> subscriptionEntry : subscriptions.entrySet()) {
             List<String> topics = subscriptionEntry.getValue().topics();
             allSubscribedTopics.addAll(topics);
@@ -57,6 +67,7 @@ public abstract class AbstractPartitionAssignor implements PartitionAssignor {
         }
 
         Map<String, Integer> partitionsPerTopic = new HashMap<>();
+        //统计每个Topic的分区个数
         for (String topic : allSubscribedTopics) {
             Integer numPartitions = metadata.partitionCountForTopic(topic);
             if (numPartitions != null && numPartitions > 0)
@@ -64,10 +75,11 @@ public abstract class AbstractPartitionAssignor implements PartitionAssignor {
             else
                 log.debug("Skipping assignment for topic {} since no metadata is available", topic);
         }
-
+        //将分区的具体逻辑委托给了assign重载方法,此重载是一个抽象方法,由子类实现
         Map<String, List<TopicPartition>> rawAssignments = assign(partitionsPerTopic, topicSubscriptions);
 
         // this class has maintains no user data, so just wrap the results
+        //整理分区分配结果
         Map<String, Assignment> assignments = new HashMap<>();
         for (Map.Entry<String, List<TopicPartition>> assignmentEntry : rawAssignments.entrySet())
             assignments.put(assignmentEntry.getKey(), new Assignment(assignmentEntry.getValue()));

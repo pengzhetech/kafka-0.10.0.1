@@ -25,14 +25,15 @@ import java.util.SortedSet;
 import java.util.TreeSet;
 
 /**
+ * 将所有的Topic的partition按照字典序排序,然后对每个Consumer进行轮询分配
  * The roundrobin assignor lays out all the available partitions and all the available consumers. It
  * then proceeds to do a roundrobin assignment from partition to consumer. If the subscriptions of all consumer
  * instances are identical, then the partitions will be uniformly distributed. (i.e., the partition ownership counts
  * will be within a delta of exactly one across all consumers.)
- *
+ * <p>
  * For example, suppose there are two consumers C0 and C1, two topics t0 and t1, and each topic has 3 partitions,
  * resulting in partitions t0p0, t0p1, t0p2, t1p0, t1p1, and t1p2.
- *
+ * <p>
  * The assignment will be:
  * C0: [t0p0, t0p2, t1p1]
  * C1: [t0p1, t1p0, t1p2]
