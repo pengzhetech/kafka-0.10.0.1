@@ -3,9 +3,9 @@
  * file distributed with this work for additional information regarding copyright ownership. The ASF licenses this file
  * to You under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
  * License. You may obtain a copy of the License at
- *
+ * <p>
  * http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
  * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
  * an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
  * specific language governing permissions and limitations under the License.
@@ -41,6 +41,8 @@ public interface Consumer<K, V> extends Closeable {
     public Set<String> subscription();
 
     /**
+     * 订阅定制的分区,并且为消费者自动分配分区
+     *
      * @see KafkaConsumer#subscribe(Collection)
      */
     public void subscribe(Collection<String> topics);
@@ -51,13 +53,15 @@ public interface Consumer<K, V> extends Closeable {
     public void subscribe(Collection<String> topics, ConsumerRebalanceListener callback);
 
     /**
+     * 用户手动订阅指定的Topic,并且指定消费的分区,此方法与subscribe方法互斥
+     *
      * @see KafkaConsumer#assign(Collection)
      */
     public void assign(Collection<TopicPartition> partitions);
 
     /**
-    * @see KafkaConsumer#subscribe(Pattern, ConsumerRebalanceListener)
-    */
+     * @see KafkaConsumer#subscribe(Pattern, ConsumerRebalanceListener)
+     */
     public void subscribe(Pattern pattern, ConsumerRebalanceListener callback);
 
     /**
@@ -66,11 +70,15 @@ public interface Consumer<K, V> extends Closeable {
     public void unsubscribe();
 
     /**
+     * 负责从服务端拉去消息
+     *
      * @see KafkaConsumer#poll(long)
      */
     public ConsumerRecords<K, V> poll(long timeout);
 
     /**
+     * 提交消费者已经完成的offset
+     *
      * @see KafkaConsumer#commitSync()
      */
     public void commitSync();
@@ -96,6 +104,8 @@ public interface Consumer<K, V> extends Closeable {
     public void commitAsync(Map<TopicPartition, OffsetAndMetadata> offsets, OffsetCommitCallback callback);
 
     /**
+     * 指定消费者起始消费的位置
+     *
      * @see KafkaConsumer#seek(TopicPartition, long)
      */
     public void seek(TopicPartition partition, long offset);
@@ -136,6 +146,8 @@ public interface Consumer<K, V> extends Closeable {
     public Map<String, List<PartitionInfo>> listTopics();
 
     /**
+     * 暂停Consumer,暂停后poll方法会返回空
+     *
      * @see KafkaConsumer#paused()
      */
     public Set<TopicPartition> paused();
@@ -146,6 +158,8 @@ public interface Consumer<K, V> extends Closeable {
     public void pause(Collection<TopicPartition> partitions);
 
     /**
+     * 继续Consumer
+     *
      * @see KafkaConsumer#resume(Collection)
      */
     public void resume(Collection<TopicPartition> partitions);

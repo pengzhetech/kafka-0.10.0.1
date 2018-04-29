@@ -3,9 +3,9 @@
  * file distributed with this work for additional information regarding copyright ownership. The ASF licenses this file
  * to You under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
  * License. You may obtain a copy of the License at
- *
+ * <p>
  * http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
  * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
  * an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
  * specific language governing permissions and limitations under the License.
@@ -19,6 +19,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
+ * 一个泛型类
  * Result of an asynchronous request from {@link ConsumerNetworkClient}. Use {@link ConsumerNetworkClient#poll(long)}
  * (and variants) to finish a request future. Use {@link #isDone()} to check if the future is complete, and
  * {@link #succeeded()} to check if the request completed successfully. Typical usage might look like this:
@@ -38,15 +39,28 @@ import java.util.List;
  * @param <T> Return type of the result (Can be Void if there is no response)
  */
 public class RequestFuture<T> {
-
+    /**
+     * 表示当前请求是否已经完成,不管正常完成还是出现异常,此字段都会被设置为true
+     */
     private boolean isDone = false;
+    /**
+     * 记录请求正常完成时收到的响应,与exception字段互斥,此字段非空则表示正常,反之则表示出现异常
+     */
     private T value;
+    /**
+     * 记录导致请求异常完成的异常类,与value字段互斥,此字段非空则表示出现异常,反之则表示正常完成
+     */
     private RuntimeException exception;
+    /**
+     * RequestFutureListener集合,用来监听完成的情况,RequestFutureListener接口有onSuccess和onFailure两个方法
+     * 对应于请求正常和出现异常两种情况
+     */
     private List<RequestFutureListener<T>> listeners = new ArrayList<>();
 
 
     /**
      * Check whether the response is ready to be handled
+     *
      * @return true if the response is ready, false otherwise
      */
     public boolean isDone() {
@@ -55,6 +69,7 @@ public class RequestFuture<T> {
 
     /**
      * Get the value corresponding to this request (only available if the request succeeded)
+     *
      * @return the value if it exists or null
      */
     public T value() {
@@ -63,6 +78,7 @@ public class RequestFuture<T> {
 
     /**
      * Check if the request succeeded;
+     *
      * @return true if the request completed and was successful
      */
     public boolean succeeded() {
@@ -71,6 +87,7 @@ public class RequestFuture<T> {
 
     /**
      * Check if the request failed.
+     *
      * @return true if the request completed with a failure
      */
     public boolean failed() {
@@ -80,6 +97,7 @@ public class RequestFuture<T> {
     /**
      * Check if the request is retriable (convenience method for checking if
      * the exception is an instance of {@link RetriableException}.
+     *
      * @return true if it is retriable, false otherwise
      */
     public boolean isRetriable() {
@@ -88,6 +106,7 @@ public class RequestFuture<T> {
 
     /**
      * Get the exception from a failed result (only available if the request failed)
+     *
      * @return The exception if it exists or null
      */
     public RuntimeException exception() {
@@ -97,6 +116,7 @@ public class RequestFuture<T> {
     /**
      * Complete the request successfully. After this call, {@link #succeeded()} will return true
      * and the value can be obtained through {@link #value()}.
+     *
      * @param value corresponding value (or null if there is none)
      */
     public void complete(T value) {
@@ -110,6 +130,7 @@ public class RequestFuture<T> {
     /**
      * Raise an exception. The request will be marked as failed, and the caller can either
      * handle the exception or throw it.
+     *
      * @param e corresponding exception to be passed to caller
      */
     public void raise(RuntimeException e) {
@@ -122,6 +143,7 @@ public class RequestFuture<T> {
 
     /**
      * Raise an error. The request will be marked as failed.
+     *
      * @param error corresponding error to be passed to caller
      */
     public void raise(Errors error) {
@@ -140,6 +162,7 @@ public class RequestFuture<T> {
 
     /**
      * Add a listener which will be notified when the future completes
+     *
      * @param listener
      */
     public void addListener(RequestFutureListener<T> listener) {
@@ -154,13 +177,19 @@ public class RequestFuture<T> {
     }
 
     /**
+     * 适配器模式
+     * RequestFutureAdapter就是一个适配器
+     * 将RequestFuture<T>适配成RequestFuture<S>
      * Convert from a request future of one type to another type
+     *
      * @param adapter The adapter which does the conversion
-     * @param <S> The type of the future adapted to
+     * @param <S>     The type of the future adapted to
      * @return The new future
      */
     public <S> RequestFuture<S> compose(final RequestFutureAdapter<T, S> adapter) {
+        //适配后的结果
         final RequestFuture<S> adapted = new RequestFuture<S>();
+        //在当前RequestFuture上添加监听器
         addListener(new RequestFutureListener<T>() {
             @Override
             public void onSuccess(T value) {
@@ -175,15 +204,23 @@ public class RequestFuture<T> {
         return adapted;
     }
 
+    /**
+     * 责任链模式
+     *
+     * @param future
+     */
     public void chain(final RequestFuture<T> future) {
+        //添加监听器
         addListener(new RequestFutureListener<T>() {
             @Override
             public void onSuccess(T value) {
+                //通过监听器将value传递给下一个RequestFuture对象
                 future.complete(value);
             }
 
             @Override
             public void onFailure(RuntimeException e) {
+                //通过监听器将异常传递给下一个RequestFuture对象
                 future.raise(e);
             }
         });

@@ -36,6 +36,7 @@ import java.util.Map;
 public interface ConsumerInterceptor<K, V> extends Configurable {
 
     /**
+     * 在消息通过poll()方法返回给用户之前对其进行拦截或修改
      * This is called just before the records are returned by {@link org.apache.kafka.clients.consumer.KafkaConsumer#poll(long)}
      * <p>
      * This method is allowed to modify consumer records, in which case the new records will be
@@ -60,6 +61,7 @@ public interface ConsumerInterceptor<K, V> extends Configurable {
     public ConsumerRecords<K, V> onConsume(ConsumerRecords<K, V> records);
 
     /**
+     * 在服务端返回提交的offset成功响应时对其进行拦截或修改
      * This is called when offsets get committed.
      * <p>
      * Any exception thrown by this method will be ignored by the caller.
