@@ -159,6 +159,9 @@ public class SubscriptionState {
     }
 
     public void subscribe(Collection<String> topics, ConsumerRebalanceListener listener) {
+        /**
+         * 用户未使用ConsumerRebalanceListener时,默认使用NoConsumerRebalanceListener,所有方法都是空实现
+         */
         if (listener == null)
             throw new IllegalArgumentException("RebalanceListener cannot be null");
         //使用AUTO_TOPICS模式
@@ -170,14 +173,17 @@ public class SubscriptionState {
     }
 
     public void changeSubscription(Collection<String> topicsToSubscribe) {
+        //订阅的Topic有变化
         if (!this.subscription.equals(new HashSet<>(topicsToSubscribe))) {
+            //清空subscription集合
             this.subscription.clear();
+            //添加订阅的Topic
             this.subscription.addAll(topicsToSubscribe);
             //将消费者自身订阅的Topic添加到groupSubscription集合
             this.groupSubscription.addAll(topicsToSubscribe);
             //将needsPartitionAssignment设置为true是因为消费者订阅的Topic发生了变化
             this.needsPartitionAssignment = true;
-
+            //同步assignment与subscription集合
             // Remove any assigned partitions which are no longer subscribed to
             for (Iterator<TopicPartition> it = assignment.keySet().iterator(); it.hasNext(); ) {
                 TopicPartition tp = it.next();
