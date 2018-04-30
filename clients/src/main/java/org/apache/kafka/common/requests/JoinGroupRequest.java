@@ -3,9 +3,9 @@
  * file distributed with this work for additional information regarding copyright ownership. The ASF licenses this file
  * to You under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
  * License. You may obtain a copy of the License at
- *
+ * <p>
  * http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
  * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
  * an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
  * specific language governing permissions and limitations under the License.
@@ -24,14 +24,35 @@ import java.util.Collections;
 import java.util.List;
 
 public class JoinGroupRequest extends AbstractRequest {
-    
+
     private static final Schema CURRENT_SCHEMA = ProtoUtils.currentRequestSchema(ApiKeys.JOIN_GROUP.id);
+    /**
+     * ConsumerGroup的ID
+     */
     private static final String GROUP_ID_KEY_NAME = "group_id";
+    /**
+     * GroupCoordinator超过session_timeout指定的时间没有收到心跳,认为消费者下线
+     */
     private static final String SESSION_TIMEOUT_KEY_NAME = "session_timeout";
+    /**
+     * GroupCoordinator分配给消费者的ID
+     */
     private static final String MEMBER_ID_KEY_NAME = "member_id";
+    /**
+     * ConsumerGroup实现的协议,默认是"consumer"
+     */
     private static final String PROTOCOL_TYPE_KEY_NAME = "protocol_type";
+    /**
+     * 包含此消费者支持的全部PartitionAssignor类型
+     */
     private static final String GROUP_PROTOCOLS_KEY_NAME = "group_protocols";
+    /**
+     * PartitionAssignor的名称
+     */
     private static final String PROTOCOL_NAME_KEY_NAME = "protocol_name";
+    /**
+     * 针对不同的PartitionAssignor,序列化后的消费者的订阅信息,其中包含用户自定义数据userData
+     */
     private static final String PROTOCOL_METADATA_KEY_NAME = "protocol_metadata";
 
     public static final String UNKNOWN_MEMBER_ID = "";

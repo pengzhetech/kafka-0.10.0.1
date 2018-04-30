@@ -58,6 +58,19 @@ import java.util.Set;
 
 /**
  * 在KafkaConsumer中通过ConsumerCoordinator组件与服务端的GroupCoordinator的交互
+ * 哪些情况会触发Rebalance操作:
+ * 1:有新的消费者加入ConsumerGroup
+ * 2:有消费者宕机下线.消费者不一定需要真正下线,例如遇到长时间的GC,网络延迟导致消费者长时间未向GroupCoordinator发送
+ * HeartbeatRequest时,GroupCoordinator会认为消费者下线
+ * 3:有消费者主动退出ConsumerGroup
+ * 4:ConsumerGroup订阅的任一Topic出现分区数量的变化
+ * 5:消费者调用unsubscrible方法取消对某topic的关注
+ * <p>
+ * Rebalance操作分三步:
+ * 一:查找GroupCoordinator,这个阶段消费者会向Kafka集群中的任一Broker发送GroupCoordinatorRequest请求,
+ * 并处理返回的GroupCoordinatorResponse响应
+ * 二:在成功查找到对应的GroupCoordinator后进入JoinGroup阶段,在此阶段,消费者会向GroupCoordinator发送JoinGroupRequest请求
+ * 并处理响应
  * <p>
  * This class manages the coordination process with the consumer coordinator.
  */

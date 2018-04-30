@@ -3,9 +3,9 @@
  * file distributed with this work for additional information regarding copyright ownership. The ASF licenses this file
  * to You under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
  * License. You may obtain a copy of the License at
- *
+ * <p>
  * http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
  * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
  * an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
  * specific language governing permissions and limitations under the License.
@@ -24,8 +24,11 @@ import java.util.List;
 import java.util.Map;
 
 public class JoinGroupResponse extends AbstractRequestResponse {
-    
+
     private static final Schema CURRENT_SCHEMA = ProtoUtils.currentResponseSchema(ApiKeys.JOIN_GROUP.id);
+    /**
+     * 错误码
+     */
     private static final String ERROR_CODE_KEY_NAME = "error_code";
 
     /**
@@ -39,13 +42,29 @@ public class JoinGroupResponse extends AbstractRequestResponse {
      * INVALID_SESSION_TIMEOUT (26)
      * GROUP_AUTHORIZATION_FAILED (30)
      */
-
+    /**
+     * GroupCoordinator分配的年代信息
+     */
     private static final String GENERATION_ID_KEY_NAME = "generation_id";
+    /**
+     * GroupCoordinator选择的PartitionAssignor
+     */
     private static final String GROUP_PROTOCOL_KEY_NAME = "group_protocol";
+    /**
+     * leader的member_id
+     */
     private static final String LEADER_ID_KEY_NAME = "leader_id";
+    /**
+     * GroupCoordinator分配给消费者的id
+     */
     private static final String MEMBER_ID_KEY_NAME = "member_id";
+    /**
+     * ConsumerGroup中全部的消费者的订阅信息
+     */
     private static final String MEMBERS_KEY_NAME = "members";
-
+    /**
+     * 对应消费者的订阅信息
+     */
     private static final String MEMBER_METADATA_KEY_NAME = "member_metadata";
 
     public static final String UNKNOWN_PROTOCOL = "";
@@ -74,7 +93,7 @@ public class JoinGroupResponse extends AbstractRequestResponse {
         struct.set(LEADER_ID_KEY_NAME, leaderId);
 
         List<Struct> memberArray = new ArrayList<>();
-        for (Map.Entry<String, ByteBuffer> entries: groupMembers.entrySet()) {
+        for (Map.Entry<String, ByteBuffer> entries : groupMembers.entrySet()) {
             Struct memberData = struct.instance(MEMBERS_KEY_NAME);
             memberData.set(MEMBER_ID_KEY_NAME, entries.getKey());
             memberData.set(MEMBER_METADATA_KEY_NAME, entries.getValue());

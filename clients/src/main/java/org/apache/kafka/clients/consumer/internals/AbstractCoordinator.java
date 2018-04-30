@@ -206,15 +206,39 @@ public abstract class AbstractCoordinator implements Closeable {
      * Block until the coordinator for this group is known and is ready to receive requests.
      */
     public void ensureCoordinatorReady() {
+        /**
+         * 1:检测是否需要重新查找GroupCoordinator,主要是检测coordinator字段是否为空
+         * 以及与GroupCoordinator之间的连接是否正常
+         */
         while (coordinatorUnknown()) {
+            /**
+             * 2:查找集群负载最低的Node节点,并创建GroupCoordinatorRequest请求
+             * 调用client.send方法将请求放入unsent队列中等待发送,并返回RequestFuture<Void>对象
+             * 返回的RequestFuture<Void>对象经过了compose方法适配
+             */
             RequestFuture<Void> future = sendGroupCoordinatorRequest();
+            /**
+             * 3:调用ConsumerNetworkClient.poll方法,将GroupCoordinatorRequest请求发送出去
+             * 此处使用阻塞的方式发送,直到收到GroupCoordinatorResponse响应或者异常完成
+             * 才从此方法返回
+             */
             client.poll(future);
-
+            /**
+             *4:检测RequestFuture<Void>对象的状态,
+             * 如果出现RetriableException异常,则调用ConsumerNetworkClient.awaitMetadataUpdate()方法
+             * 阻塞更新Metadata找那个记录的进群元数据后跳转到步骤1继续执行,如果不是RetriableException
+             * 则直接报错
+             */
             if (future.failed()) {
                 if (future.isRetriable())
                     client.awaitMetadataUpdate();
                 else
                     throw future.exception();
+                /**
+                 * 5:如果成功找到GroupCoordinator节点,但是网络连接失败,则将unsent中对应的请求清空,并将coordinator
+                 * 字段值为null,准备重新查找GroupCoordinator
+                 * 退避一定时间后跳转到步骤一继续执行
+                 */
             } else if (coordinator != null && client.connectionFailed(coordinator)) {
                 // we found the coordinator, but the connection has failed, so mark
                 // it dead and backoff before retrying discovery
@@ -542,7 +566,13 @@ public abstract class AbstractCoordinator implements Closeable {
     private RequestFuture<Void> sendGroupCoordinatorRequest() {
         // initiate the group metadata request
         // find a node to ask about the coordinator
+        /**
+         * 查找负载最低的节点,底层实现时查找InFlightRequests中未确认请求最少的节点
+         */
         Node node = this.client.leastLoadedNode();
+        /**
+         * 找不到可用的节点,则直接返回一个异常结束的RequestFuture
+         */
         if (node == null) {
             // TODO: If there are no brokers left, perhaps we should use the bootstrap set
             // from configuration?
@@ -550,40 +580,63 @@ public abstract class AbstractCoordinator implements Closeable {
         } else {
             // create a group  metadata request
             log.debug("Sending coordinator request for group {} to broker {}", groupId, node);
+            //创建GroupCoordinatorRequest请求
             GroupCoordinatorRequest metadataRequest = new GroupCoordinatorRequest(this.groupId);
+            /**
+             * 将GroupCoordinatorRequest请求缓存到unsent集合,ConsumerNetworkClient.send方法
+             * 匿名RequestFutureAdapter
+             */
             return client.send(node, ApiKeys.GROUP_COORDINATOR, metadataRequest)
                     .compose(new RequestFutureAdapter<ClientResponse, Void>() {
                         @Override
                         public void onSuccess(ClientResponse response, RequestFuture<Void> future) {
+                            //处理roupMetadataResponse的入口
                             handleGroupMetadataResponse(response, future);
                         }
                     });
         }
     }
 
+    /**
+     * 步骤:
+     * 1:调用coordinatorUnknown方法检测是否已经找到了GroupCoordinator并已成功连接,如果是则忽略此GroupCoordinatorResponse
+     * 因为在发送GroupCoordinatorRequest时并没有防止重发的机制,可能有多个GroupCoordinatorResponse,否则,继续下面的操作
+     * 2:解析GroupCoordinatorResponse,得到服务端GroupCoordinator信息
+     * 3:构建Node对象赋给coordinator,并尝试与GroupCoordinator建立连接
+     * 4:启动heartbeatTask定时任务
+     * 5:最后调用RequestFuture.complete方法将正常收到的GroupCoordinatorResponse的事件传播出去
+     * 6:如果GroupCoordinatorResponse中的错误码不为NONE,则调用RequestFuture.raise方法将异常传播出去
+     * 最终由ensureCoordinatorReady()方法中的步骤4处理
+     *
+     * @param resp
+     * @param future
+     */
     private void handleGroupMetadataResponse(ClientResponse resp, RequestFuture<Void> future) {
         log.debug("Received group coordinator response {}", resp);
 
-        if (!coordinatorUnknown()) {
+        if (!coordinatorUnknown()) {//检测是否有正常工作的GroupCoordinator
             // We already found the coordinator, so ignore the request
             future.complete(null);
         } else {
+            //解析GroupCoordinatorResponse
             GroupCoordinatorResponse groupCoordinatorResponse = new GroupCoordinatorResponse(resp.responseBody());
             // use MAX_VALUE - node.id as the coordinator id to mimic separate connections
             // for the coordinator in the underlying network client layer
             // TODO: this needs to be better handled in KAFKA-1935
             Errors error = Errors.forCode(groupCoordinatorResponse.errorCode());
             if (error == Errors.NONE) {
+                //创建GroupCoordinator对应的Node对象
                 this.coordinator = new Node(Integer.MAX_VALUE - groupCoordinatorResponse.node().id(),
                         groupCoordinatorResponse.node().host(),
                         groupCoordinatorResponse.node().port());
 
                 log.info("Discovered coordinator {} for group {}.", coordinator, groupId);
-
+                //尝试连接GroupCoordinator
                 client.tryConnect(coordinator);
 
                 // start sending heartbeats only if we have a valid generation
                 if (generation > 0)
+                    //启动heartbeatTask
                     heartbeatTask.reset();
                 future.complete(null);
             } else if (error == Errors.GROUP_AUTHORIZATION_FAILED) {
@@ -600,10 +653,11 @@ public abstract class AbstractCoordinator implements Closeable {
      * @return true if the coordinator is unknown
      */
     public boolean coordinatorUnknown() {
-        if (coordinator == null)
+        if (coordinator == null)//检测coordinator字段是否为空
             return true;
-
+        //检测与GroupCoordinator之间的网络连接是否正常
         if (client.connectionFailed(coordinator)) {
+            //将unsent集合中对应的请求清空并将coordinator字段设置为false
             coordinatorDead();
             return true;
         }
