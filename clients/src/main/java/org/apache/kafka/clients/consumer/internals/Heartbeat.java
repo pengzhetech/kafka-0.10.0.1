@@ -14,6 +14,7 @@ package org.apache.kafka.clients.consumer.internals;
 
 /**
  * 心跳任务辅助类
+ * 消费者需要定期向服务端GroupCoordinator发送HeartbeatRequest来确定彼此在线
  * A helper class for managing the heartbeat to the coordinator
  */
 public final class Heartbeat {
